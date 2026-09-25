@@ -1,170 +1,231 @@
-import React, { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
-
-// Public demo token for dark 3D vector tiles (or swap with your own Mapbox key)
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || 'pk.eyJ1IjoiZGV2LW1hcGJveC1wdWJsaWMiLCJhIjoiY2x6cTlyZnE1MDJuZzJqb3d3djB1cnR0ZSJ9.n_Y2wQ8-j-r4o2vUfLp7vQ';
+import React, { useState } from 'react';
+import { Flame } from 'lucide-react';
 
 interface Props {
-  worldState: any;
+  worldState?: any;
 }
 
 export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const [pitch, setPitch] = useState<number>(56);
+  const [rotation, setRotation] = useState<number>(-22);
 
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    // Center on urban financial/metro district with dense 3D skyscrapers
-    const centerCoords: [number, number] = [-74.006, 40.7128]; // Lower Manhattan NYC
-
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: centerCoords,
-      zoom: 15.6,
-      pitch: 62, // 3D Tilt perspective
-      bearing: -22,
-      antialias: true
-    });
-
-    mapRef.current = map;
-
-    map.on('style.load', () => {
-      // 1. Add 3D Extruded Building Layer
-      const layers = map.getStyle().layers;
-      const labelLayerId = layers?.find(
-        (layer) => layer.type === 'symbol' && layer.layout?.['text-field']
-      )?.id;
-
-      map.addLayer(
-        {
-          id: 'add-3d-buildings',
-          source: 'composite',
-          'source-layer': 'building',
-          filter: ['==', 'extrude', 'true'],
-          type: 'fill-extrusion',
-          minzoom: 14,
-          paint: {
-            'fill-extrusion-color': '#1a2333',
-            'fill-extrusion-height': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              14,
-              0,
-              15.05,
-              ['get', 'height']
-            ],
-            'fill-extrusion-base': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              14,
-              0,
-              15.05,
-              ['get', 'min_height']
-            ],
-            'fill-extrusion-opacity': 0.85
-          }
-        },
-        labelLayerId
-      );
-
-      // 2. Add Tactical Evacuation Perimeter Polygon
-      map.addSource('evac-zone', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[
-              [-74.009, 40.711],
-              [-74.003, 40.710],
-              [-74.002, 40.715],
-              [-74.008, 40.716],
-              [-74.009, 40.711]
-            ]]
-          },
-          properties: {}
-        }
-      });
-
-      map.addLayer({
-        id: 'evac-zone-fill',
-        type: 'fill',
-        source: 'evac-zone',
-        paint: {
-          'fill-color': '#f59e0b',
-          'fill-opacity': 0.22
-        }
-      });
-
-      map.addLayer({
-        id: 'evac-zone-line',
-        type: 'line',
-        source: 'evac-zone',
-        paint: {
-          'line-color': '#f59e0b',
-          'line-width': 2.5,
-          'line-dasharray': [3, 2]
-        }
-      });
-
-      // 3. Add Custom Tactical HTML Markers
-      // Fire Hazard 1
-      const fireEl = document.createElement('div');
-      fireEl.className = 'custom-marker';
-      fireEl.innerHTML = `
-        <div style="background: rgba(220, 38, 38, 0.9); border: 1.5px solid #ff4444; border-radius: 4px; padding: 2px 6px; box-shadow: 0 0 14px rgba(239,68,68,0.8); display: flex; align-items: center; gap: 4px; color: white; font-size: 10px; font-weight: 900; font-family: monospace;">
-          <span style="font-size: 13px;">🔥</span> BURNING Sector 5C
-        </div>
-      `;
-      new mapboxgl.Marker(fireEl).setLngLat([-74.004, 40.715]).addTo(map);
-
-      // Fire Truck FIRE-03
-      const fireTruckEl = document.createElement('div');
-      fireTruckEl.innerHTML = `
-        <div style="background: #991b1b; color: white; border: 1px solid #fca5a5; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold; font-family: monospace; box-shadow: 0 2px 5px rgba(0,0,0,0.8);">
-          🚒 FIRE-03
-        </div>
-      `;
-      new mapboxgl.Marker(fireTruckEl).setLngLat([-74.0035, 40.713]).addTo(map);
-
-      // Police POL-02
-      const policeEl = document.createElement('div');
-      policeEl.innerHTML = `
-        <div style="background: #1e3a8a; color: #93c5fd; border: 1px solid #60a5fa; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold; font-family: monospace; box-shadow: 0 2px 5px rgba(0,0,0,0.8);">
-          🚓 POL-02
-        </div>
-      `;
-      new mapboxgl.Marker(policeEl).setLngLat([-74.005, 40.7145]).addTo(map);
-
-      // Ambulance AMB-07
-      const ambEl = document.createElement('div');
-      ambEl.innerHTML = `
-        <div style="background: #0f172a; color: #38bdf8; border: 1.5px solid #0284c7; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: bold; font-family: monospace; box-shadow: 0 2px 5px rgba(0,0,0,0.8);">
-          🚑 AMB-07
-        </div>
-      `;
-      new mapboxgl.Marker(ambEl).setLngLat([-74.007, 40.712]).addTo(map);
-
-      // Road Blocked Warning
-      const roadBlockEl = document.createElement('div');
-      roadBlockEl.innerHTML = `
-        <div style="background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; padding: 1px 4px; border-radius: 2px; font-size: 8px; font-weight: 900; font-family: monospace;">
-          ⊗ ROAD BLOCKED
-        </div>
-      `;
-      new mapboxgl.Marker(roadBlockEl).setLngLat([-74.008, 40.714]).addTo(map);
-    });
-
-    return () => map.remove();
-  }, []);
+  // 3D Extruded Building Blocks with heights and footprint dimensions
+  const buildings = [
+    { id: 'b1', top: 50, left: 70, width: 65, height: 55, elevation: 90, color: '#1a2b42', label: 'Sector 5A' },
+    { id: 'b2', top: 130, left: 55, width: 75, height: 60, elevation: 130, color: '#162335', label: 'Financial Plz' },
+    { id: 'b3', top: 60, left: 340, width: 90, height: 65, elevation: 110, color: '#1c314d', label: 'Sector 5C' },
+    { id: 'b4', top: 170, left: 330, width: 85, height: 70, elevation: 80, color: '#17273d', label: 'Metro Hub' },
+    { id: 'b5', top: 280, left: 360, width: 95, height: 80, elevation: 140, color: '#131e2e', label: 'Sector 6B' },
+    { id: 'b6', top: 310, left: 80, width: 70, height: 75, elevation: 65, color: '#1d2f47', label: 'West Warehouses' },
+  ];
 
   return (
-    <div className="relative w-full h-[480px] rounded border-4 border-[#2b170c] overflow-hidden shadow-[inset_0_4px_12px_rgba(0,0,0,0.8)]">
-      <div ref={mapContainerRef} className="w-full h-full" />
+    <div className="relative w-full h-[480px] bg-[#070d18] rounded border-4 border-[#2b170c] overflow-hidden shadow-[inset_0_4px_16px_rgba(0,0,0,0.9)] select-none">
+      
+      {/* 3D Perspective Viewport */}
+      <div 
+        className="w-full h-full relative"
+        style={{
+          perspective: '1000px',
+        }}
+      >
+        <div 
+          className="w-full h-full absolute inset-0 transition-transform duration-500 ease-out"
+          style={{
+            transform: `rotateX(${pitch}deg) rotateZ(${rotation}deg) scale(0.95)`,
+            transformStyle: 'preserve-3d',
+          }}
+        >
+          {/* Ground City Grid Surface */}
+          <div 
+            className="absolute -inset-24 bg-[#0a1322] border-2 border-[#162a47]"
+            style={{
+              backgroundImage: `
+                linear-gradient(to right, rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 240, 255, 0.15) 1px, transparent 1px)
+              `,
+              backgroundSize: '40px 40px',
+            }}
+          >
+            {/* Street Corridors */}
+            <div className="absolute top-[140px] left-0 right-0 h-9 bg-[#0e1c31] border-y border-[#00f0ff]/30 flex items-center justify-around">
+              <span className="text-[9px] font-mono tracking-widest text-cyan-500/60 font-black">AVENUE A // MAIN METRO ARTERY</span>
+              <span className="text-[9px] font-mono tracking-widest text-cyan-500/60 font-black">CORRIDOR 01</span>
+            </div>
+
+            <div className="absolute top-[270px] left-0 right-0 h-10 bg-[#0e1c31] border-y border-[#00f0ff]/30 flex items-center justify-around">
+              <span className="text-[9px] font-mono tracking-widest text-cyan-500/60 font-black">AVENUE B // LOGISTICS HIGHWAY</span>
+            </div>
+
+            <div className="absolute left-[200px] top-0 bottom-0 w-8 bg-[#0e1c31] border-x border-[#00f0ff]/30"></div>
+            <div className="absolute left-[310px] top-0 bottom-0 w-9 bg-[#0e1c31] border-x border-[#00f0ff]/30"></div>
+
+            {/* Evacuation Zone Vector Polygon on Ground */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              <polygon 
+                points="170,430 290,180 470,250 370,440" 
+                fill="rgba(245, 158, 11, 0.22)" 
+                stroke="#f59e0b" 
+                strokeWidth="2.5" 
+                strokeDasharray="6 4" 
+              />
+              <line x1="160" y1="410" x2="380" y2="410" stroke="#00f0ff" strokeWidth="2.5" strokeDasharray="4 3" />
+            </svg>
+
+            {/* Road Blocked Barricade */}
+            <div className="absolute top-[145px] left-[215px] bg-red-950 text-red-300 border border-red-600 px-2 py-0.5 text-[8px] font-black tracking-widest shadow-red-glow">
+              ⊗ CORRIDOR BLOCKED
+            </div>
+          </div>
+
+          {/* 3D Extruded Buildings (Rendered with real Z-depth) */}
+          {buildings.map((b) => (
+            <div
+              key={b.id}
+              className="absolute transition-transform duration-300"
+              style={{
+                top: `${b.top}px`,
+                left: `${b.left}px`,
+                width: `${b.width}px`,
+                height: `${b.height}px`,
+                transformStyle: 'preserve-3d',
+                transform: `translateZ(${b.elevation / 2}px)`,
+              }}
+            >
+              {/* Roof (Top Face) */}
+              <div 
+                className="absolute inset-0 border border-cyan-400/40 flex flex-col items-center justify-center text-center p-1"
+                style={{
+                  background: 'linear-gradient(135deg, #1f3654 0%, #15253b 100%)',
+                  transform: `translateZ(${b.elevation / 2}px)`,
+                  boxShadow: '0 0 12px rgba(0, 240, 255, 0.2)',
+                }}
+              >
+                <span className="text-[8px] font-black text-cyan-200 tracking-wider font-mono uppercase">{b.label}</span>
+                <span className="text-[7px] text-cyan-400 font-bold">{b.elevation}m</span>
+              </div>
+
+              {/* Front Facade */}
+              <div 
+                className="absolute left-0 right-0 bottom-0 bg-gradient-to-b from-[#16273d] to-[#0c1624] border-x border-b border-[#234168]"
+                style={{
+                  height: `${b.elevation}px`,
+                  transform: 'rotateX(-90deg)',
+                  transformOrigin: 'bottom',
+                }}
+              />
+
+              {/* Side Facade */}
+              <div 
+                className="absolute top-0 bottom-0 right-0 bg-gradient-to-b from-[#111f31] to-[#080f1a] border-y border-r border-[#1e385c]"
+                style={{
+                  width: `${b.elevation}px`,
+                  transform: 'rotateY(90deg)',
+                  transformOrigin: 'right',
+                }}
+              />
+            </div>
+          ))}
+
+          {/* Tactical Overlay: Burning Structure Sector 5C */}
+          <div 
+            className="absolute top-[45px] left-[350px] pointer-events-none"
+            style={{ transform: 'translateZ(135px)' }}
+          >
+            <div className="bg-red-950/95 border-2 border-red-500 text-white font-black text-[9px] px-2 py-1 rounded shadow-red-glow flex items-center space-x-1 animate-pulse font-mono">
+              <Flame size={13} className="text-red-400 animate-bounce" />
+              <span>BURNING Sector 5C</span>
+            </div>
+          </div>
+
+          {/* Tactical Overlay: Burning Structure Sector 6B */}
+          <div 
+            className="absolute top-[260px] left-[380px] pointer-events-none"
+            style={{ transform: 'translateZ(155px)' }}
+          >
+            <div className="bg-red-950/95 border-2 border-red-500 text-white font-black text-[9px] px-2 py-1 rounded shadow-red-glow flex items-center space-x-1 animate-pulse font-mono">
+              <Flame size={13} className="text-red-400 animate-bounce" />
+              <span>BURNING Sector 6B</span>
+            </div>
+          </div>
+
+          {/* Evacuation Label */}
+          <div 
+            className="absolute top-[280px] left-[220px] pointer-events-none"
+            style={{ transform: 'translateZ(20px)' }}
+          >
+            <div className="bg-[#1e150a] border border-amber-500/80 text-amber-300 font-mono text-[9px] px-2 py-1 rounded font-black shadow-lg">
+              EVACUATION ZONE — Sector 5
+            </div>
+          </div>
+
+          {/* 3D Units on Ground */}
+          {/* POL-02 */}
+          <div 
+            className="absolute top-[135px] left-[260px]"
+            style={{ transform: 'translateZ(10px)' }}
+          >
+            <div className="bg-blue-900 border border-blue-400 text-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black font-mono shadow-lg flex items-center space-x-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></div>
+              <span>POL-02</span>
+            </div>
+          </div>
+
+          {/* FIRE-03 */}
+          <div 
+            className="absolute top-[270px] left-[330px]"
+            style={{ transform: 'translateZ(10px)' }}
+          >
+            <div className="bg-red-900 border border-red-400 text-red-200 px-1.5 py-0.5 rounded text-[8px] font-black font-mono shadow-lg flex items-center space-x-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"></div>
+              <span>FIRE-03</span>
+            </div>
+          </div>
+
+          {/* AMB-07 */}
+          <div 
+            className="absolute top-[370px] left-[240px]"
+            style={{ transform: 'translateZ(10px)' }}
+          >
+            <div className="bg-cyan-950 border border-cyan-400 text-cyan-200 px-1.5 py-0.5 rounded text-[8px] font-black font-mono shadow-lg flex items-center space-x-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></div>
+              <span>AMB-07</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Perspective & 3D Tilt Controls */}
+      <div className="absolute bottom-2 right-2 flex items-center space-x-2 bg-[#0c1726]/90 border border-[#1e3452] px-2.5 py-1 rounded text-[9px] font-mono text-cyan-300">
+        <span className="text-gray-400 font-bold uppercase">3D Camera:</span>
+        <button 
+          onClick={() => setPitch((p) => Math.min(p + 6, 75))}
+          className="px-1.5 py-0.5 bg-[#172b47] hover:bg-[#223f66] rounded font-bold border border-cyan-800"
+          title="Tilt Up"
+        >
+          ▲ TILT
+        </button>
+        <button 
+          onClick={() => setPitch((p) => Math.max(p - 6, 20))}
+          className="px-1.5 py-0.5 bg-[#172b47] hover:bg-[#223f66] rounded font-bold border border-cyan-800"
+          title="Tilt Down"
+        >
+          ▼ FLAT
+        </button>
+        <button 
+          onClick={() => setRotation((r) => r - 15)}
+          className="px-1.5 py-0.5 bg-[#172b47] hover:bg-[#223f66] rounded font-bold border border-cyan-800"
+          title="Rotate Left"
+        >
+          ↺ ROT
+        </button>
+      </div>
+
+      {/* Grid Coordinates HUD Indicator */}
+      <div className="absolute top-2 left-2 bg-[#071322]/80 border border-cyan-900/60 px-2 py-0.5 rounded text-[8px] font-mono text-cyan-400">
+        SECTOR COORD: [40.7128° N, 74.0060° W] • ELEVATION MATRIX: ACTIVE
+      </div>
     </div>
   );
 };
