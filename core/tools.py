@@ -117,3 +117,74 @@ class SimulationTools:
             "message": f"Safety perimeter of {radius_meters}m established around {location}.",
             "log": log_entry
         }
+
+import heapq
+
+class NavigationRouter:
+    """Calculates shortest paths avoiding road closures and burning zones."""
+    
+    # Manhattan grid nodes and coordinates
+    NODES = {
+        "H1_Central": (-74.006, 40.718),
+        "H2_West": (-74.015, 40.712),
+        "Sector_5C": (-74.004, 40.715),
+        "Sector_6B": (-74.002, 40.711),
+        "Evac_Zone": (-74.008, 40.712),
+        "Station_North": (-74.001, 40.720),
+        "Station_South": (-74.010, 40.708),
+    }
+
+    # Edges format: (node_from, node_to, base_travel_minutes, road_id)
+    EDGES = [
+        ("Station_North", "Sector_5C", 3.2, "Road_A1"),
+        ("Sector_5C", "H1_Central", 2.5, "Road_B2"),
+        ("Sector_5C", "Sector_6B", 4.0, "Road_C3"),
+        ("Sector_6B", "H1_Central", 5.0, "Road_D4"),
+        ("Sector_6B", "Evac_Zone", 3.0, "Road_E5"),
+        ("Evac_Zone", "H2_West", 2.8, "Road_F6"),
+        ("Station_South", "Evac_Zone", 4.1, "Road_G7"),
+        ("Station_South", "Sector_6B", 3.5, "Road_H8"),
+        ("H1_Central", "H2_West", 6.0, "Road_I9"),
+    ]
+
+    @classmethod
+    def calculate_optimal_route(cls, origin: str, destination: str, blocked_roads: list) -> dict:
+        adj = {n: [] for n in cls.NODES}
+        for u, v, cost, road_id in cls.EDGES:
+            # Penalize or block routes based on road closures
+            if road_id in blocked_roads:
+                continue
+            adj[u].append((cost, v, road_id))
+            adj[v].append((cost, u, road_id))
+
+        pq = [(0, origin, [origin], [])]
+        visited = set()
+
+        while pq:
+            cost, curr, path, route_roads = heapq.heappop(pq)
+            if curr == destination:
+                return {
+                    "origin": origin,
+                    "destination": destination,
+                    "eta_minutes": round(cost, 1),
+                    "waypoints": path,
+                    "roads_traversed": route_roads,
+                    "avoided_blocks": blocked_roads
+                }
+            if curr in visited:
+                continue
+            visited.add(curr)
+
+            for edge_cost, neighbor, road_id in adj[curr]:
+                if neighbor not in visited:
+                    heapq.heappush(pq, (cost + edge_cost, neighbor, path + [neighbor], route_roads + [road_id]))
+
+        # Fallback if cut off
+        return {
+            "origin": origin,
+            "destination": destination,
+            "eta_minutes": 99.9,
+            "waypoints": [origin, destination],
+            "roads_traversed": [],
+            "status": "NO_SAFE_CORRIDOR"
+        }

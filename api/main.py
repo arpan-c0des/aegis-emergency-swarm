@@ -166,3 +166,97 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+
+from pydantic import BaseModel
+from typing import Optional
+
+# Configuration state for Auto vs Manual Injection
+system_config = {
+    "auto_mode": True
+}
+
+class ManualInjectPayload(BaseModel):
+    incident_type: str
+    location: str
+    severity: str
+    details: str
+    block_road: Optional[str] = None
+    patient_count: int = 1
+
+class HospitalUpdatePayload(BaseModel):
+    hospital_id: str
+    available_beds: int
+    trauma_ready: bool
+    generator_status: str
+
+class RouteRequest(BaseModel):
+    unit_id: str
+    destination: str
+
+@app.get("/api/config")
+def get_config():
+    return system_config
+
+@app.post("/api/config/toggle-auto")
+def toggle_auto_mode():
+    system_config["auto_mode"] = not system_config["auto_mode"]
+    return {"auto_mode": system_config["auto_mode"]}
+
+# 1. FLEET NAVIGATION ENDPOINT
+@app.post("/api/fleet/route")
+def get_fleet_route(req: RouteRequest):
+    unit = orchestrator.state.units.get(req.unit_id)
+    origin = unit.location if unit else "Station_North"
+    blocked = [r for r, status in orchestrator.state.roads.items() if status == "blocked"]
+    from core.tools import NavigationRouter
+    route_plan = NavigationRouter.calculate_optimal_route(origin, req.destination, blocked)
+    return {
+        "unit_id": req.unit_id,
+        "fuel_remaining_minutes": unit.fuel_remaining_minutes if unit else 60,
+        "routing": route_plan
+    }
+
+# 2. HOSPITAL RECEPTION BED UPDATE ENDPOINT
+@app.post("/api/hospitals/update")
+def update_hospital_beds(payload: HospitalUpdatePayload):
+    if payload.hospital_id in orchestrator.state.hospitals:
+        h = orchestrator.state.hospitals[payload.hospital_id]
+        h.available_beds = payload.available_beds
+        return {"status": "success", "hospital": h.__dict__}
+    return {"status": "error", "message": "Hospital ID not found"}
+
+# 3. MANUAL DATA INJECTION (TRAINING / DRILL SCENARIOS)
+@app.post("/api/admin/inject-data")
+def inject_custom_data(data: ManualInjectPayload):
+    if system_config["auto_mode"]:
+        return {"status": "denied", "message": "Disable Auto-Mode before injecting manual scenario data."}
+    
+    # Inject dynamic hazard
+    inc_id = f"INC_{len(orchestrator.state.incidents) + 1:02d}"
+    from core.world_state import Incident, Patient
+    orchestrator.state.incidents[inc_id] = Incident(
+        id=inc_id,
+        incident_type=data.incident_type,
+        location=data.location,
+        severity=data.severity,
+        details=data.details
+    )
+    
+    if data.block_road:
+        orchestrator.state.roads[data.block_road] = "blocked"
+
+    for i in range(data.patient_count):
+        pid = f"P_{len(orchestrator.state.patients) + 1:02d}"
+        orchestrator.state.patients[pid] = Patient(
+            id=pid,
+            severity=data.severity,
+            location=data.location,
+            status="waiting"
+        )
+
+    return {
+        "status": "injected",
+        "incident_id": inc_id,
+        "current_incidents": len(orchestrator.state.incidents),
+        "world_state": orchestrator.state.export_state_dict()
+    }
