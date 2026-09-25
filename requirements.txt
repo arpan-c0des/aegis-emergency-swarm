@@ -1,0 +1,11 @@
+google-genai
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+requests
+elevenlabs
+snowflake-connector-python
+solders
+solana
+python-jose[cryptography]
