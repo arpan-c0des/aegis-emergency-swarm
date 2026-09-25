@@ -1,7 +1,55 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 body {
-  background-color: #0b0f19;
-  color: #f3f4f6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background-color: #040910;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  overflow-x: hidden;
+}
+
+/* Sci-fi HUD Tactical Panel with Corner Brackets */
+.tactical-box {
+  background: radial-gradient(circle at 50% 0%, #0d1a2d 0%, #050b14 100%);
+  border: 1px solid #142a45;
+  position: relative;
+}
+
+.tactical-box::before,
+.tactical-box::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+
+.tactical-box::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid #38bdf8;
+  border-left: 2px solid #38bdf8;
+}
+
+.tactical-box::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid #38bdf8;
+  border-right: 2px solid #38bdf8;
+}
+
+/* Custom scrollbar for HUD terminal */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #060d17;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e3a5f;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0284c7;
 }
