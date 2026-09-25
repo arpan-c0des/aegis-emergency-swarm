@@ -2,54 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #040910;
-  color: #cbd5e1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  overflow-x: hidden;
+@layer base {
+  body {
+    background: radial-gradient(circle at 50% 50%, #26160c 0%, #110905 100%);
+    color: #e2e8f0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+    overflow-x: hidden;
+  }
 }
 
-/* Sci-fi HUD Tactical Panel with Corner Brackets */
-.tactical-box {
-  background: radial-gradient(circle at 50% 0%, #0d1a2d 0%, #050b14 100%);
-  border: 1px solid #142a45;
+/* Brushed Industrial Aluminum Plate */
+.plate-metal {
+  background: linear-gradient(180deg, #d8dee9 0%, #b8c1cf 45%, #9aa6b8 50%, #cbd3df 100%);
+  border: 2px solid #5d6777;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.9), 
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4), 
+    0 8px 20px rgba(0, 0, 0, 0.75);
+}
+
+.sub-panel-metal {
+  background: linear-gradient(180deg, #c4cbd6 0%, #9fa9b8 100%);
+  border: 1.5px solid #6b7788;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.7), 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Hardwood Walnut Frame */
+.frame-wood {
+  background: linear-gradient(135deg, #442211 0%, #2b1409 50%, #442211 100%);
+  border: 5px solid #1a0b05;
+  box-shadow: 
+    inset 0 2px 4px rgba(255, 180, 120, 0.25), 
+    inset 0 -3px 6px rgba(0, 0, 0, 0.8), 
+    0 12px 30px rgba(0, 0, 0, 0.9);
+}
+
+/* Stitched Leather / Bakelite Recessed Area */
+.bezel-recessed {
+  background: radial-gradient(circle at 50% 50%, #1f232a 0%, #0d1015 100%);
+  border: 2px solid #2f3642;
+  box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+
+/* Brass Rivet / Screws */
+.rivet {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #9ca3af 40%, #374151 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), inset 0 0.5px 0.5px rgba(255, 255, 255, 0.8);
+  position: relative;
+}
+.rivet::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: #1f2937;
+  transform: translateY(-50%) rotate(35deg);
+}
+
+/* Analog Meter Dial Glass */
+.gauge-dial {
+  background: radial-gradient(circle at 50% 50%, #f4f2ea 0%, #e2ded0 70%, #bcb6a2 100%);
+  border: 4px solid #333d4b;
+  box-shadow: 
+    inset 0 4px 8px rgba(0,0,0,0.5), 
+    inset 0 -2px 4px rgba(255,255,255,0.8), 
+    0 3px 6px rgba(0,0,0,0.6);
   position: relative;
 }
 
-.tactical-box::before,
-.tactical-box::after {
-  content: '';
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  pointer-events: none;
+/* Green Vacuum Fluorescent Display (VFD) */
+.vfd-display {
+  background-color: #06150a;
+  border: 3px solid #1e2920;
+  box-shadow: inset 0 3px 8px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.2);
+  color: #39ff68;
+  text-shadow: 0 0 8px rgba(57, 255, 104, 0.7);
 }
 
-.tactical-box::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid #38bdf8;
-  border-left: 2px solid #38bdf8;
+/* Physical Mechanical Pushbuttons */
+.analog-btn {
+  background: radial-gradient(circle at 40% 35%, #e5e7eb 0%, #9ca3af 60%, #4b5563 100%);
+  border: 2px solid #374151;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.9);
+  transition: all 0.08s ease;
+}
+.analog-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.8), inset 0 2px 4px rgba(0,0,0,0.6);
 }
 
-.tactical-box::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid #38bdf8;
-  border-right: 2px solid #38bdf8;
+/* Physical LED Bulbs */
+.led-bulb-red {
+  background: radial-gradient(circle at 35% 35%, #ff9999 0%, #e11d48 55%, #881337 100%);
+  box-shadow: 0 0 10px rgba(225, 29, 72, 0.8), inset 0 1px 2px rgba(255,255,255,0.9);
+}
+.led-bulb-amber {
+  background: radial-gradient(circle at 35% 35%, #fef08a 0%, #f59e0b 55%, #78350f 100%);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8), inset 0 1px 2px rgba(255,255,255,0.9);
+}
+.led-bulb-green {
+  background: radial-gradient(circle at 35% 35%, #bbf7d0 0%, #10b981 55%, #064e3b 100%);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.8), inset 0 1px 2px rgba(255,255,255,0.9);
 }
 
-/* Custom scrollbar for HUD terminal */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: #060d17;
-}
-::-webkit-scrollbar-thumb {
-  background: #1e3a5f;
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
+/* Manila Paper Tape (Activity Feed Ticker) */
+.paper-strip {
+  background: #f1ebd8;
+  border-left: 3px solid #cca96a;
+  border-right: 1px solid #dcd3bd;
+  box-shadow: 1px 2px 5px rgba(0,0,0,0.35);
+  color: #1c1917;
 }
