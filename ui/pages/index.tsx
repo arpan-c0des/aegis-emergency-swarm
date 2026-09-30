@@ -4,10 +4,10 @@ import { Navbar } from '../components/Navbar';
 import { RealWorld3DMap } from '../components/RealWorld3DMap';
 import { 
   Flame, Stethoscope, AlertTriangle, Radio, 
-  MapPin, Volume2, Shield, Activity, Power, RefreshCw, X, Send
+  MapPin, Volume2, Shield, Activity, Power, RefreshCw, X, Send, Sparkles, Clock, Check
 } from 'lucide-react';
 
-export default function SkeuomorphicCommandConsole() {
+export default function ClaymorphicCommandConsole() {
   const [worldState, setWorldState] = useState<any>(null);
   const [transcript, setTranscript] = useState<any[]>([]);
   const [commandPlan, setCommandPlan] = useState<string>("");
@@ -26,20 +26,23 @@ export default function SkeuomorphicCommandConsole() {
     patient_count: 3
   });
 
+  const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8000/ws";
+
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/state")
+    fetch(`${BACKEND_URL}/api/state`)
       .then((res) => res.json())
       .then((data) => setWorldState(data))
       .catch((err) => console.error("API unreachable", err));
 
-    fetch("http://127.0.0.1:8000/api/config")
+    fetch(`${BACKEND_URL}/api/config`)
       .then((res) => res.json())
       .then((cfg) => {
         if (typeof cfg.auto_mode === "boolean") setAutoMode(cfg.auto_mode);
       })
       .catch(() => {});
 
-    const ws = new WebSocket("ws://127.0.0.1:8000/ws");
+    const ws = new WebSocket(WS_URL);
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "INITIAL_STATE" || msg.type === "SIMULATION_UPDATE" || msg.type === "RESET_STATE") {
@@ -53,7 +56,7 @@ export default function SkeuomorphicCommandConsole() {
 
   const toggleAuto = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/config/toggle-auto", { method: "POST" });
+      const res = await fetch(`${BACKEND_URL}/api/config/toggle-auto`, { method: "POST" });
       const data = await res.json();
       setAutoMode(data.auto_mode);
     } catch (e) {
@@ -64,7 +67,7 @@ export default function SkeuomorphicCommandConsole() {
 
   const injectScenarioData = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/admin/inject-data", {
+      const res = await fetch(`${BACKEND_URL}/api/admin/inject-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(customIncident)
@@ -83,7 +86,7 @@ export default function SkeuomorphicCommandConsole() {
   const triggerReplan = async () => {
     setIsSimulating(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/simulate/tick", { method: "POST" });
+      const res = await fetch(`${BACKEND_URL}/api/simulate/tick`, { method: "POST" });
       const data = await res.json();
       setWorldState(data.updated_world_state);
       setTranscript(data.transcript || []);
@@ -97,7 +100,7 @@ export default function SkeuomorphicCommandConsole() {
 
   const triggerReset = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/reset", { method: "POST" });
+      const res = await fetch(`${BACKEND_URL}/api/reset`, { method: "POST" });
       const data = await res.json();
       setWorldState(data.state);
       setTranscript([]);
@@ -109,477 +112,482 @@ export default function SkeuomorphicCommandConsole() {
 
   const playVoiceBroadcast = () => {
     setIsPlayingAudio(true);
-    const audio = new Audio(`http://127.0.0.1:8000/api/audio/latest?t=${Date.now()}`);
+    const audio = new Audio(`${BACKEND_URL}/api/audio/latest?t=${Date.now()}`);
     audio.play().catch(() => setIsPlayingAudio(false));
     audio.onended = () => setIsPlayingAudio(false);
     audio.onerror = () => setIsPlayingAudio(false);
   };
 
+  const getAgentColor = (agent: string) => {
+    switch (agent) {
+      case "MedicalAgent":
+      case "MEDICAL":
+        return { bg: "#B5DEFF", text: "#1b446f" };
+      case "FireAgent":
+      case "FIRE":
+        return { bg: "#FFE6A5", text: "#874b0c" };
+      case "PoliceAgent":
+      case "POLICE":
+        return { bg: "#D6C2FF", text: "#4a2d82" };
+      case "LogisticsAgent":
+      case "LOGISTICS":
+        return { bg: "#FFB5E8", text: "#7a2a62" };
+      default:
+        return { bg: "#C3FFB5", text: "#2e5a2a" };
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#140b06] p-3 text-slate-800 select-none flex flex-col justify-between relative">
+    <div className="min-h-screen p-3 md:p-5 flex flex-col justify-between relative selection:bg-[#FFB5E8]/40">
       <Head>
-        <title>AEGIS — Tactical Skeuomorphic C2 Console</title>
+        <title>AEGIS — Claymorphic C2 Swarm Console</title>
       </Head>
 
-      {/* PORTAL NAVIGATION BAR */}
+      {/* Floating Pastel Gradient Background Orbs */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div 
+          className="absolute -top-[120px] -left-[120px] w-[520px] h-[520px] rounded-full blur-[24px] opacity-[0.55]" 
+          style={{ background: 'radial-gradient(circle at 30% 30%, #FFB5E8 0%, #D6C2FF 60%, transparent 75%)' }}
+        />
+        <div 
+          className="absolute top-[10%] right-[-80px] w-[440px] h-[440px] rounded-full blur-[26px] opacity-[0.45]" 
+          style={{ background: 'radial-gradient(circle at 40% 40%, #B5DEFF 0%, #E8E9FF 70%)' }}
+        />
+        <div 
+          className="absolute bottom-[-120px] left-[20%] w-[620px] h-[620px] rounded-full blur-[30px] opacity-[0.5]" 
+          style={{ background: 'radial-gradient(circle at 30% 30%, #FFE6A5 0%, #FFB5E8 50%, transparent 75%)' }}
+        />
+      </div>
+
+      {/* NAVBAR */}
       <Navbar />
 
-      {/* TOP RIVETED ALUMINUM HEADER SLAB */}
-      <header className="plate-metal rounded-md p-3.5 mb-3 flex flex-wrap items-center justify-between relative">
-        {/* Corner Screws */}
-        <div className="rivet absolute top-1.5 left-1.5"></div>
-        <div className="rivet absolute top-1.5 right-1.5"></div>
-        <div className="rivet absolute bottom-1.5 left-1.5"></div>
-        <div className="rivet absolute bottom-1.5 right-1.5"></div>
-
-        {/* 1. Brass Badge & Title */}
-        <div className="flex items-center space-x-3.5 pl-3">
-          <div className="w-12 h-12 bg-gradient-to-b from-[#e3bf7a] via-[#ba8d38] to-[#6a4c14] rounded border-2 border-[#543b0c] flex items-center justify-center shadow-md">
-            <div className="w-7 h-7 border-2 border-[#45310c] rotate-45 flex items-center justify-center">
-              <div className="w-2.5 h-2.5 bg-[#45310c]"></div>
-            </div>
+      {/* TOP CLAY HEADER SLAB */}
+      <header className="clay-card p-4 mb-4 flex flex-wrap items-center justify-between gap-4">
+        {/* Brand */}
+        <div className="flex items-center gap-3">
+          <div 
+            className="w-12 h-12 rounded-[18px] bg-gradient-to-br from-[#FFB5E8] to-[#D6C2FF] border-[3px] border-white flex items-center justify-center shrink-0"
+            style={{ boxShadow: 'inset 2px 2px 4px rgba(255,255,255,0.9), 3px 5px 12px rgba(120,110,150,0.18)' }}
+          >
+            <Sparkles className="text-white" size={22} strokeWidth={2.6} />
           </div>
           <div>
-            <div className="text-2xl font-black tracking-widest text-[#1e2736] flex items-center space-x-2 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]">
+            <div className="text-2xl font-[800] tracking-[-0.03em] text-[#2F2940] flex items-center gap-1.5">
               <span>AEGIS</span>
-              <span className="text-gray-500 font-light">—</span>
+              <span className="text-[#A99DC0] font-[500]">—</span>
             </div>
-            <div className="text-[10px] tracking-wider uppercase font-bold text-[#4b5563] bg-[#d3d9e3] px-2 py-0.5 rounded border border-[#a2abb9]">
+            <div className="text-[11px] font-[700] text-[#8E819E] tracking-wide uppercase">
               Agentic Emergency Response System
             </div>
           </div>
         </div>
 
-        {/* 2. Embedded Recessed Telemetry Plate */}
-        <div className="hidden lg:flex items-center space-x-5 text-[11px] font-bold bg-[#14171d] text-[#c0cad8] border-2 border-[#38404d] px-5 py-2 rounded-sm shadow-[inset_0_2px_5px_rgba(0,0,0,0.8)]">
-          <span>STATUS: <span className="text-[#38ef7d]">ACTIVE</span></span>
-          <span className="text-gray-600">•</span>
-          <span>THREAT LEVEL: <span className="text-[#f59e0b]">ELEVATED</span></span>
-          <span className="text-gray-600">•</span>
-          <span>CLASSIFICATION: <span className="text-[#60a5fa]">RESTRICTED</span></span>
+        {/* Telemetry Status Pills */}
+        <div className="hidden lg:flex items-center gap-2">
+          <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#C3FFB5] border border-white animate-pulse"></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">STATUS: <b className="text-[#2E5A2A]">ACTIVE</b></span>
+          </div>
+
+          <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#FFE6A5] border border-white"></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">THREAT: <b className="text-[#874b0c]">ELEVATED</b></span>
+          </div>
+
+          <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#B5DEFF] border border-white"></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">SECURITY: <b className="text-[#244974]">RESTRICTED</b></span>
+          </div>
         </div>
 
-        {/* 3. VFD Clock & Physical Push Buttons */}
-        <div className="flex items-center space-x-4 pr-3">
-          {/* Green VFD Terminal Display */}
-          <div className="vfd-display px-3 py-1.5 rounded font-mono text-center text-xs font-bold tracking-widest">
-            <div>2026-09-25</div>
-            <div>02:17:34 UTC</div>
+        {/* Clock & Action Clay Buttons */}
+        <div className="flex items-center gap-3">
+          <div className="clay-inset px-3 py-1.5 rounded-[14px] text-center">
+            <div className="text-[10px] font-[800] text-[#7B6E96]">{clock}</div>
           </div>
 
-          {/* PAUSE Push-Button with Red Bulb */}
-          <div className="text-center">
-            <button 
-              onClick={triggerReset} 
-              className="w-10 h-10 rounded-full analog-btn flex items-center justify-center mx-auto"
-            >
-              <div className="w-4 h-4 rounded-full led-bulb-red"></div>
-            </button>
-            <span className="text-[9px] font-black uppercase text-[#374151] mt-0.5 block tracking-wider">PAUSE</span>
-          </div>
+          <button
+            onClick={triggerReset}
+            className="clay-button px-4 py-2 rounded-full font-[800] text-[12px] bg-white text-[#5A4E75] hover:bg-[#F3EFFC] flex items-center gap-1.5"
+          >
+            <RefreshCw size={13} />
+            <span>RESET</span>
+          </button>
 
-          {/* REPLAN Push-Button with Amber Bulb */}
-          <div className="text-center">
-            <button 
-              onClick={triggerReplan}
-              disabled={isSimulating}
-              className="w-10 h-10 rounded-full analog-btn flex items-center justify-center mx-auto"
-            >
-              <div className={`w-4 h-4 rounded-full ${isSimulating ? 'led-bulb-amber animate-ping' : 'led-bulb-amber'}`}></div>
-            </button>
-            <span className="text-[9px] font-black uppercase text-[#374151] mt-0.5 block tracking-wider">REPLAN</span>
-          </div>
+          <button
+            onClick={triggerReplan}
+            disabled={isSimulating}
+            className="clay-button px-5 py-2 rounded-full font-[800] text-[12px] bg-[#B5DEFF] text-[#1b446f] flex items-center gap-1.5"
+          >
+            <Activity size={14} className={isSimulating ? "animate-spin" : ""} />
+            <span>{isSimulating ? "REPLANNING..." : "REPLAN"}</span>
+          </button>
 
-          {/* BROADCAST Push-Button with Red/Orange Bulb */}
-          <div className="text-center">
-            <button 
-              onClick={playVoiceBroadcast}
-              className="w-10 h-10 rounded-full analog-btn flex items-center justify-center mx-auto"
-            >
-              <div className={`w-4 h-4 rounded-full ${isPlayingAudio ? 'led-bulb-red animate-pulse' : 'led-bulb-amber'}`}></div>
-            </button>
-            <span className="text-[9px] font-black uppercase text-[#374151] mt-0.5 block tracking-wider">BROADCAST</span>
-          </div>
+          <button
+            onClick={playVoiceBroadcast}
+            disabled={isPlayingAudio}
+            className={`clay-button px-5 py-2 rounded-full font-[800] text-[12px] flex items-center gap-1.5 ${
+              isPlayingAudio ? "bg-[#FFB5E8] text-[#7a2a62] animate-pulse" : "bg-[#FFE6A5] text-[#874b0c]"
+            }`}
+          >
+            <Radio size={14} />
+            <span>{isPlayingAudio ? "TRANSMITTING" : "BROADCAST"}</span>
+          </button>
         </div>
       </header>
 
-      {/* MAIN 3-PANEL WOOD CONSOLE DISPLAY */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 flex-1">
+      {/* MAIN 3-COLUMN CLAY WORKSPACE */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-start">
         
-        {/* [ 01 ] SHARED WORLD STATE (WOOD-FRAMED SUB-CONSOLE) */}
-        <div className="lg:col-span-3 frame-wood rounded-md p-3 flex flex-col justify-between relative shadow-2xl">
-          <div className="rivet absolute top-2 left-2"></div>
-          <div className="rivet absolute top-2 right-2"></div>
-
+        {/* [01] SHARED WORLD STATE */}
+        <div className="lg:col-span-3 clay-card p-4 flex flex-col justify-between space-y-4">
           <div>
-            {/* Brass Title Plate */}
-            <div className="bg-gradient-to-r from-[#ca9e5a] via-[#e5c583] to-[#b38843] border border-[#6b4e1b] py-1 px-3 rounded-sm shadow-sm flex items-center justify-between text-xs font-black tracking-wider text-[#2d1e07] mb-3">
-              <span>[ 01 ] SHARED WORLD STATE</span>
-              <div className="w-2 h-2 rounded-full led-bulb-green"></div>
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
+              <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">[ 01 ] SHARED WORLD STATE</span>
+              <div className="w-2.5 h-2.5 rounded-full bg-[#C3FFB5] border-2 border-white animate-pulse"></div>
             </div>
 
-            {/* Sub-Panel: Infrastructure */}
-            <div className="sub-panel-metal p-2.5 rounded border border-[#626e7e] mb-3 relative">
-              <div className="text-[9px] font-black uppercase tracking-wider text-[#1e293b] mb-1 bg-[#d5dde8] px-1.5 py-0.5 rounded inline-block border border-[#9ca3af]">
-                INFRASTRUCTURE
-              </div>
-              <div className="flex items-center space-x-3 mt-1">
-                <div className="text-xs text-[#1e293b] font-bold flex-1 leading-snug">
-                  <div className="text-[10px] bg-[#22c55e] text-black px-1.5 py-0.5 rounded font-black inline-block mb-1 shadow-sm">
-                    OPERATIONAL — 92%
-                  </div>
-                  <div>Roads: 42 segments | <span className="text-[#b91c1c]">3 degraded</span></div>
+            {/* Infrastructure */}
+            <div className="mb-4">
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Infrastructure</span>
+              <div className="clay-inset p-3 rounded-[20px] mt-1.5 flex items-center gap-3">
+                <div 
+                  className="w-10 h-10 rounded-[14px] bg-[#B5DEFF] border-[2px] border-white flex items-center justify-center shrink-0"
+                  style={{ boxShadow: 'inset 1px 1px 3px rgba(255,255,255,0.9), 2px 2px 6px rgba(0,0,0,0.06)' }}
+                >
+                  <Activity size={18} className="text-[#244974]" />
                 </div>
-
-                {/* Analog Infrastructure Meter */}
-                <div className="w-14 h-14 rounded-full gauge-dial flex items-center justify-center relative shadow-inner">
-                  <div className="absolute inset-1 rounded-full border border-dashed border-[#888]"></div>
-                  <div className="w-1 h-6 bg-[#b91c1c] absolute bottom-6 origin-bottom transform rotate-45 shadow-sm"></div>
-                  <div className="w-2 h-2 bg-[#222] rounded-full z-10"></div>
-                  <span className="absolute bottom-1 text-[7px] font-black text-gray-700">92%</span>
+                <div className="text-xs">
+                  <div className="font-[700] text-[#3E3650]">
+                    Roads: 42 segments | <span className="text-[#dc2626]">3 degraded</span>
+                  </div>
+                  <div className="text-[11px] font-[800] text-[#2E5A2A] mt-0.5">Status: 92% Operational</div>
                 </div>
               </div>
             </div>
 
-            {/* Sub-Panel: Hospitals Gauges */}
-            <div className="sub-panel-metal p-2.5 rounded border border-[#626e7e] mb-3">
-              <div className="text-[9px] font-black uppercase tracking-wider text-[#1e293b] mb-2 bg-[#d5dde8] px-1.5 py-0.5 rounded inline-block border border-[#9ca3af]">
-                HOSPITALS
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2">
-                {/* Gauge 1: General Hospital */}
-                <div className="bezel-recessed p-2 rounded text-center">
-                  <div className="w-14 h-14 rounded-full gauge-dial mx-auto relative flex items-center justify-center mb-1">
-                    <div className="w-0.5 h-6 bg-[#dc2626] absolute bottom-6 origin-bottom transform rotate-[35deg]"></div>
-                    <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-                    <span className="absolute bottom-1 text-[7px] font-bold text-gray-700">76%</span>
-                  </div>
-                  <div className="text-[9px] font-black text-[#e2e8f0]">GENERAL HOSPITAL</div>
-                  <div className="text-[8px] text-[#38ef7d]">CAPACITY 76%</div>
-                  <div className="text-[7px] text-gray-400 mt-0.5">Beds: {worldState?.hospitals?.H1?.available_beds ?? 28}/37</div>
-                </div>
+            {/* Hospitals */}
+            <div className="space-y-3 mb-4">
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Hospitals</span>
 
-                {/* Gauge 2: St Luke's Med */}
-                <div className="bezel-recessed p-2 rounded text-center">
-                  <div className="w-14 h-14 rounded-full gauge-dial mx-auto relative flex items-center justify-center mb-1">
-                    <div className="w-0.5 h-6 bg-[#dc2626] absolute bottom-6 origin-bottom transform -rotate-[20deg]"></div>
-                    <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-                    <span className="absolute bottom-1 text-[7px] font-bold text-gray-700">41%</span>
+              {/* General Hospital */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex justify-between items-center text-xs font-[800] text-[#3E3650] mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Stethoscope size={14} className="text-[#244974]" />
+                    <span>GENERAL HOSPITAL</span>
                   </div>
-                  <div className="text-[9px] font-black text-[#e2e8f0]">ST. LUKE'S MED</div>
-                  <div className="text-[8px] text-[#fbbf24]">CAPACITY 41%</div>
-                  <div className="text-[7px] text-gray-400 mt-0.5">Beds: {worldState?.hospitals?.H2?.available_beds ?? 12}/29</div>
+                  <span className="text-[#244974]">76%</span>
+                </div>
+                <div className="h-2 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mb-2">
+                  <div className="h-full rounded-full bg-[#B5DEFF] transition-all" style={{ width: '76%' }}></div>
+                </div>
+                <div className="flex justify-between text-[10px] font-[700] text-[#8E819E]">
+                  <span>Power: <b className="text-[#2E5A2A]">NOMINAL</b></span>
+                  <span>Beds: {worldState?.hospitals?.H1?.available_beds ?? 28}/37</span>
+                </div>
+              </div>
+
+              {/* St. Luke's */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex justify-between items-center text-xs font-[800] text-[#3E3650] mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Stethoscope size={14} className="text-[#874b0c]" />
+                    <span>ST. LUKE'S MED</span>
+                  </div>
+                  <span className="text-[#874b0c]">41%</span>
+                </div>
+                <div className="h-2 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mb-2">
+                  <div className="h-full rounded-full bg-[#FFE6A5] transition-all" style={{ width: '41%' }}></div>
+                </div>
+                <div className="flex justify-between text-[10px] font-[700] text-[#8E819E]">
+                  <span>Generator: <b className="text-[#874b0c]">ACTIVE</b></span>
+                  <span>Beds: {worldState?.hospitals?.H2?.available_beds ?? 12}/29</span>
                 </div>
               </div>
             </div>
 
-            {/* Sub-Panel: Fleet Fuel Status Dial Gauges */}
-            <div className="sub-panel-metal p-2.5 rounded border border-[#626e7e]">
-              <div className="text-[9px] font-black uppercase tracking-wider text-[#1e293b] mb-2 bg-[#d5dde8] px-1.5 py-0.5 rounded inline-block border border-[#9ca3af]">
-                FLEET FUEL STATUS
-              </div>
-              <div className="grid grid-cols-3 gap-1 text-center">
-                {/* Fuel 1 */}
-                <div className="bezel-recessed p-1 rounded">
-                  <div className="w-10 h-10 rounded-full gauge-dial mx-auto relative flex items-center justify-center">
-                    <div className="w-0.5 h-4 bg-[#b91c1c] absolute bottom-4 origin-bottom transform rotate-[40deg]"></div>
-                    <div className="w-1.5 h-1.5 bg-[#111] rounded-full"></div>
-                  </div>
-                  <div className="text-[8px] font-bold text-gray-200 mt-1">AMB-07</div>
-                  <div className="text-[7px] text-[#22c55e]">FUEL 84%</div>
+            {/* Fleet Fuel Status */}
+            <div>
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Fleet Fuel Status</span>
+              <div className="clay-inset p-3 rounded-[20px] mt-1.5 space-y-2 text-xs font-[700]">
+                <div className="flex justify-between items-center pb-1 border-b border-[#EEE8F8]">
+                  <span>AMB-07 | <b className="text-[#244974]">84%</b></span>
+                  <span className="text-[10px] bg-[#C3FFB5] text-[#2E5A2A] px-2 py-0.5 rounded-full font-[800]">READY</span>
                 </div>
-                {/* Fuel 2 */}
-                <div className="bezel-recessed p-1 rounded">
-                  <div className="w-10 h-10 rounded-full gauge-dial mx-auto relative flex items-center justify-center">
-                    <div className="w-0.5 h-4 bg-[#b91c1c] absolute bottom-4 origin-bottom transform -rotate-[50deg]"></div>
-                    <div className="w-1.5 h-1.5 bg-[#111] rounded-full"></div>
-                  </div>
-                  <div className="text-[8px] font-bold text-gray-200 mt-1">ENG-12</div>
-                  <div className="text-[7px] text-[#ef4444]">FUEL 22%</div>
+                <div className="flex justify-between items-center pb-1 border-b border-[#EEE8F8]">
+                  <span>ENG-12 | <b className="text-[#dc2626]">22%</b></span>
+                  <span className="text-[10px] bg-[#FFB5E8] text-[#7a2a62] px-2 py-0.5 rounded-full font-[800]">LOW FUEL</span>
                 </div>
-                {/* Fuel 3 */}
-                <div className="bezel-recessed p-1 rounded">
-                  <div className="w-10 h-10 rounded-full gauge-dial mx-auto relative flex items-center justify-center">
-                    <div className="w-0.5 h-4 bg-[#b91c1c] absolute bottom-4 origin-bottom transform rotate-[15deg]"></div>
-                    <div className="w-1.5 h-1.5 bg-[#111] rounded-full"></div>
-                  </div>
-                  <div className="text-[8px] font-bold text-gray-200 mt-1">FIRE-03</div>
-                  <div className="text-[7px] text-[#fbbf24]">FUEL 68%</div>
+                <div className="flex justify-between items-center">
+                  <span>FIRE-03 | <b className="text-[#874b0c]">68%</b></span>
+                  <span className="text-[10px] bg-[#FFE6A5] text-[#874b0c] px-2 py-0.5 rounded-full font-[800]">DEPLOYED</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-[#331c0f] pt-2 text-[9px] font-bold text-[#d4af72] flex justify-between">
+          <div className="pt-3 border-t-2 border-[#EEE8F8] flex justify-between text-[10px] font-[800] text-[#8E819E]">
             <span>TOTAL: 14 UNITS</span>
             <span>OFFLINE: 1</span>
             <span>CHARGING: 2</span>
           </div>
         </div>
 
-        {/* [ 02 ] 3D REAL-WORLD TACTICAL MAP */}
-        <div className="lg:col-span-6 frame-wood rounded-md p-3 flex flex-col justify-between relative shadow-2xl">
-          <div className="rivet absolute top-2 left-2"></div>
-          <div className="rivet absolute top-2 right-2"></div>
-
-          {/* Brass Header Plate */}
-          <div className="bg-gradient-to-r from-[#ca9e5a] via-[#e5c583] to-[#b38843] border border-[#6b4e1b] py-1 px-3 rounded-sm shadow-sm flex items-center justify-between text-xs font-black tracking-wider text-[#2d1e07] mb-2">
-            <span>[ 02 ] 3D TACTICAL CITY PERSPECTIVE — SECTOR 5 & 6</span>
-            <div className="flex items-center space-x-1 text-[10px] font-black">
-              <span className="w-2 h-2 rounded-full led-bulb-amber animate-pulse"></span>
-              <span>3D SENSOR LINK ACTIVE</span>
+        {/* [02] 3D TACTICAL CITY PERSPECTIVE */}
+        <div className="lg:col-span-6 clay-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
+            <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
+              [ 02 ] 3D TACTICAL CITY PERSPECTIVE — SECTOR 5 & 6
+            </span>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFE6A5] border-2 border-white text-[10px] font-[800] text-[#874b0c]">
+              <span className="w-2 h-2 rounded-full bg-[#874b0c] animate-pulse"></span>
+              <span>SENSOR LINK ACTIVE</span>
             </div>
           </div>
 
-          {/* Real-Life 3D Map Box */}
-          <RealWorld3DMap worldState={worldState} />
+          {/* Embedded 3D Map Component */}
+          <div className="clay-device p-2 overflow-hidden mb-3">
+            <RealWorld3DMap worldState={worldState} />
+          </div>
 
-          {/* Analog Indicator Legend */}
-          <div className="sub-panel-metal p-1.5 rounded mt-2 flex flex-wrap items-center justify-between text-[9px] font-black text-[#1e293b]">
-            <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full led-bulb-green"></span>
+          {/* Clay Legend */}
+          <div className="clay-inset p-2.5 rounded-[18px] flex flex-wrap items-center justify-between text-[10px] font-[800] text-[#5A4E75]">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B5DEFF] border border-white"></span>
               <span>AMBULANCE</span>
             </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full led-bulb-red"></span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#FFE6A5] border border-white"></span>
               <span>FIRE TRUCK</span>
             </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#D6C2FF] border border-white"></span>
               <span>POLICE</span>
             </span>
-            <span className="flex items-center space-x-1">
-              <span className="text-red-700 font-black">⊗</span>
+            <span className="flex items-center gap-1">
+              <span className="text-[#dc2626] font-[800]">⊗</span>
               <span>ROAD BLOCKED</span>
             </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 bg-red-600"></span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded bg-[#FFB5E8] border border-white"></span>
               <span>BURNING</span>
             </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2 h-2 bg-amber-400"></span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded bg-[#C3FFB5] border border-white"></span>
               <span>EVAC ZONE</span>
             </span>
           </div>
         </div>
 
-        {/* [ 03 ] LIVE AGENT ACTIVITY FEED (PAPER TELETYPE TICKER) */}
-        <div className="lg:col-span-3 frame-wood rounded-md p-3 flex flex-col justify-between relative shadow-2xl">
-          <div className="rivet absolute top-2 left-2"></div>
-          <div className="rivet absolute top-2 right-2"></div>
-
+        {/* [03] LIVE AGENT ACTIVITY FEED */}
+        <div className="lg:col-span-3 clay-card p-4 flex flex-col justify-between h-full">
           <div>
-            {/* Brass Title Plate */}
-            <div className="bg-gradient-to-r from-[#ca9e5a] via-[#e5c583] to-[#b38843] border border-[#6b4e1b] py-1 px-3 rounded-sm shadow-sm flex items-center justify-between text-xs font-black tracking-wider text-[#2d1e07] mb-2.5">
-              <span>[ 03 ] LIVE AGENT ACTIVITY FEED</span>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full led-bulb-green"></span>
-                <span className="text-[10px] text-green-950 font-bold">LIVE</span>
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
+              <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
+                [ 03 ] LIVE AGENT ACTIVITY FEED
+              </span>
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#C3FFB5] border-2 border-white text-[10px] font-[800] text-[#2E5A2A]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#2E5A2A] animate-pulse"></span>
+                <span>LIVE</span>
               </div>
             </div>
 
-            {/* Recessed Paper Scroll Chute */}
-            <div className="bezel-recessed p-2 rounded max-h-[500px] overflow-y-auto space-y-2.5">
-              {/* Typewritten Paper Ribbon 1 */}
-              <div className="paper-strip p-2 rounded-sm text-xs font-mono">
-                <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                  <span>02:17:31</span>
-                  <span className="bg-[#b45309] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">COMMAND</span>
+            {/* Scrollable Soft Activity Stream */}
+            <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
+              {/* Command Action */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:31</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#FFE6A5] text-[#874b0c] text-[10px] font-[800] border border-white">
+                    COMMAND
+                  </span>
                 </div>
-                <div className="leading-snug text-[10px] font-serif">
-                  {commandPlan ? commandPlan.substring(0, 110) + "..." : "Replan initiated: Route recalculated for AMB-07 to GH."}
+                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
+                  {commandPlan ? commandPlan.substring(0, 110) + "..." : "Replan initiated: Route recalculated for AMB-07 to General Hospital."}
                 </div>
               </div>
 
-              {/* Typewritten Paper Ribbon 2 */}
-              <div className="paper-strip p-2 rounded-sm text-xs font-mono">
-                <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                  <span>02:17:26</span>
-                  <span className="bg-[#0284c7] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">MEDICAL</span>
+              {/* Medical Feed */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:26</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#B5DEFF] text-[#1b446f] text-[10px] font-[800] border border-white">
+                    MEDICAL
+                  </span>
                 </div>
-                <div className="leading-snug text-[10px] font-serif">
+                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
                   AMB-12 enroute to ST. LUKE'S — ETA 3.1min Priority: HIGH
                 </div>
               </div>
 
-              {/* Typewritten Paper Ribbon 3 */}
-              <div className="paper-strip p-2 rounded-sm text-xs font-mono">
-                <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                  <span>02:17:19</span>
-                  <span className="bg-[#b91c1c] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">FIRE</span>
+              {/* Fire Feed */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:19</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#FFB5E8] text-[#7a2a62] text-[10px] font-[800] border border-white">
+                    FIRE
+                  </span>
                 </div>
-                <div className="leading-snug text-[10px] font-serif">
+                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
                   FIRE-03 engaged at Sector 5C. Water supply connected.
                 </div>
               </div>
 
-              {/* Typewritten Paper Ribbon 4 */}
-              <div className="paper-strip p-2 rounded-sm text-xs font-mono">
-                <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                  <span>02:17:12</span>
-                  <span className="bg-[#1e40af] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">POLICE</span>
+              {/* Police Feed */}
+              <div className="clay-card p-3 rounded-[20px] bg-white">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:12</span>
+                  <span className="px-2 py-0.5 rounded-full bg-[#D6C2FF] text-[#4a2d82] text-[10px] font-[800] border border-white">
+                    POLICE
+                  </span>
                 </div>
-                <div className="leading-snug text-[10px] font-serif">
+                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
                   POL-02 secured perimeter Sector 6. Roadblock established at 5th & Main.
                 </div>
               </div>
 
-              {/* Typewritten Paper Ribbon 5 */}
-              <div className="paper-strip p-2 rounded-sm text-xs font-mono">
-                <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                  <span>02:17:04</span>
-                  <span className="bg-[#4338ca] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">LOGISTICS</span>
-                </div>
-                <div className="leading-snug text-[10px] font-serif">
-                  Fuel convoy dispatched to ENG-12. ETA 6min.
-                </div>
-              </div>
-
-              {/* Dynamic Transcript Ticker Items */}
-              {transcript.map((item, idx) => (
-                <div key={idx} className="paper-strip p-2 rounded-sm text-xs font-mono">
-                  <div className="flex justify-between items-center text-[9px] font-black border-b border-[#cca96a] pb-1 mb-1">
-                    <span>LIVE TICKER</span>
-                    <span className="bg-[#475569] text-white px-1.5 py-0.2 rounded text-[8px] uppercase">
-                      {item.agent.replace("Agent", "")}
-                    </span>
+              {/* Dynamic Transcript Items from Swarm Deliberation */}
+              {transcript.map((item, idx) => {
+                const color = getAgentColor(item.agent);
+                return (
+                  <div key={idx} className="clay-card p-3 rounded-[20px] bg-white">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-[700] text-[#9A8EB0]">SWARM EVENT</span>
+                      <span 
+                        className="px-2 py-0.5 rounded-full text-[10px] font-[800] border border-white"
+                        style={{ backgroundColor: color.bg, color: color.text }}
+                      >
+                        {item.agent.toUpperCase().replace("AGENT", "")}
+                      </span>
+                    </div>
+                    <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
+                      {item.assessment}
+                    </div>
                   </div>
-                  <div className="leading-snug text-[10px] font-serif">
-                    {item.assessment}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          <div className="border-t border-[#331c0f] pt-2 text-[9px] font-bold text-[#d4af72] flex justify-between">
-            <span>COMM: TELETYPE-V4</span>
+          <div className="pt-3 border-t-2 border-[#EEE8F8] flex justify-between text-[10px] font-[800] text-[#8E819E]">
+            <span>COMM: GEMINI-SWARM</span>
             <span>SOLANA: VERIFIED</span>
           </div>
         </div>
 
       </div>
 
-      {/* BOTTOM RIVETED BRUSHED-STEEL TELEMETRY DOCK */}
-      <footer className="plate-metal rounded-md p-3 mt-3 grid grid-cols-2 md:grid-cols-6 gap-3 items-center relative">
-        <div className="rivet absolute top-1.5 left-1.5"></div>
-        <div className="rivet absolute top-1.5 right-1.5"></div>
-        <div className="rivet absolute bottom-1.5 left-1.5"></div>
-        <div className="rivet absolute bottom-1.5 right-1.5"></div>
-
-        {/* Gauge Meter 1: AVG RESPONSE */}
-        <div className="bezel-recessed p-2 rounded text-center">
-          <div className="text-[8px] uppercase font-bold text-gray-300">AVG RESPONSE</div>
-          <div className="w-12 h-12 rounded-full gauge-dial mx-auto relative flex items-center justify-center my-1">
-            <div className="w-0.5 h-5 bg-[#b91c1c] absolute bottom-5 origin-bottom transform rotate-[25deg]"></div>
-            <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-          </div>
-          <div className="text-sm font-black text-white">4.2min</div>
-          <div className="text-[8px] text-[#22c55e]">▼ +0.8min</div>
+      {/* BOTTOM CLAY TELEMETRY DOCK */}
+      <footer className="clay-card p-4 mt-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-center">
+        {/* Metric 1 */}
+        <div className="clay-inset p-3 rounded-[20px] text-center">
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">AVG RESPONSE</div>
+          <div className="text-xl font-[800] text-[#244974] mt-0.5">4.2min</div>
+          <div className="text-[10px] font-[800] text-[#2E5A2A]">▼ +0.8min</div>
         </div>
 
-        {/* Gauge Meter 2: UTILIZATION */}
-        <div className="bezel-recessed p-2 rounded text-center">
-          <div className="text-[8px] uppercase font-bold text-gray-300">UTILIZATION</div>
-          <div className="w-12 h-12 rounded-full gauge-dial mx-auto relative flex items-center justify-center my-1">
-            <div className="w-0.5 h-5 bg-[#b91c1c] absolute bottom-5 origin-bottom transform rotate-[55deg]"></div>
-            <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
+        {/* Metric 2 */}
+        <div className="clay-inset p-3 rounded-[20px] text-center">
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">UTILIZATION</div>
+          <div className="text-xl font-[800] text-[#874b0c] mt-0.5">87%</div>
+          <div className="h-1.5 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mt-1">
+            <div className="h-full rounded-full bg-[#FFE6A5]" style={{ width: '87%' }}></div>
           </div>
-          <div className="text-sm font-black text-[#fbbf24]">87%</div>
-          <div className="text-[8px] text-gray-400">87% 10</div>
         </div>
 
-        {/* Gauge Meter 3: ACTIVE AGENTS */}
-        <div className="bezel-recessed p-2 rounded text-center">
-          <div className="text-[8px] uppercase font-bold text-gray-300">ACTIVE AGENTS</div>
-          <div className="w-12 h-12 rounded-full gauge-dial mx-auto relative flex items-center justify-center my-1">
-            <div className="w-0.5 h-5 bg-[#b91c1c] absolute bottom-5 origin-bottom transform rotate-[70deg]"></div>
-            <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-          </div>
-          <div className="text-sm font-black text-white">22/24</div>
-          <div className="text-[8px] text-gray-400">2 Standby</div>
+        {/* Metric 3 */}
+        <div className="clay-inset p-3 rounded-[20px] text-center">
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">ACTIVE AGENTS</div>
+          <div className="text-xl font-[800] text-[#2F2940] mt-0.5">22/24</div>
+          <div className="text-[10px] font-[700] text-[#8E819E]">2 Standby</div>
         </div>
 
-        {/* Gauge Meter 4: POWER GRID */}
-        <div className="bezel-recessed p-2 rounded text-center">
-          <div className="text-[8px] uppercase font-bold text-gray-300">POWER GRID</div>
-          <div className="w-12 h-12 rounded-full gauge-dial mx-auto relative flex items-center justify-center my-1">
-            <div className="w-0.5 h-5 bg-[#b91c1c] absolute bottom-5 origin-bottom transform rotate-[65deg]"></div>
-            <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-          </div>
-          <div className="text-sm font-black text-[#22c55e]">92%</div>
-          <div className="text-[8px] text-[#22c55e]">STABLE</div>
+        {/* Metric 4 */}
+        <div className="clay-inset p-3 rounded-[20px] text-center">
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">POWER GRID</div>
+          <div className="text-xl font-[800] text-[#2E5A2A] mt-0.5">92%</div>
+          <div className="text-[10px] font-[800] text-[#2E5A2A]">STABLE</div>
         </div>
 
-        {/* Gauge Meter 5: INCIDENTS */}
-        <div className="bezel-recessed p-2 rounded text-center">
-          <div className="text-[8px] uppercase font-bold text-gray-300">INCIDENTS</div>
-          <div className="w-12 h-12 rounded-full gauge-dial mx-auto relative flex items-center justify-center my-1">
-            <div className="w-0.5 h-5 bg-[#b91c1c] absolute bottom-5 origin-bottom transform rotate-[30deg]"></div>
-            <div className="w-2 h-2 bg-[#111] rounded-full z-10"></div>
-          </div>
-          <div className="text-sm font-black text-[#ef4444]">7 ACTIVE</div>
-          <div className="text-[8px] text-gray-400">2 HIGH • 3 MED</div>
+        {/* Metric 5 */}
+        <div className="clay-inset p-3 rounded-[20px] text-center">
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">INCIDENTS</div>
+          <div className="text-xl font-[800] text-[#dc2626] mt-0.5">7 ACTIVE</div>
+          <div className="text-[10px] font-[700] text-[#8E819E]">2 HIGH • 3 MED</div>
         </div>
 
-        {/* Interactive Physical Industrial Toggle Switch Unit */}
-        <div className="bezel-recessed p-2.5 rounded flex items-center justify-between col-span-2 md:col-span-1">
+        {/* Interactive Clay Auto/Manual Toggle Switch Unit */}
+        <div className="clay-inset p-3 rounded-[20px] flex items-center justify-between col-span-2 md:col-span-1">
           <div>
-            <div className="text-[9px] font-bold text-gray-300">COMPUTE: 64%</div>
-            <div className="text-[9px] font-bold text-gray-400">12ms • AEGIS-OPS</div>
-            <span className={`text-[8px] font-black uppercase ${autoMode ? "text-[#22c55e]" : "text-[#f59e0b]"}`}>
-              {autoMode ? "AUTO-MODE: ON" : "MANUAL-TRAIN: ON"}
-            </span>
+            <div className="text-[10px] font-[800] text-[#7B6E96]">LOAD 64% • 12ms</div>
+            <div className={`text-[11px] font-[800] uppercase mt-0.5 ${autoMode ? "text-[#2E5A2A]" : "text-[#874b0c]"}`}>
+              {autoMode ? "AUTO: ON" : "DRILL: ON"}
+            </div>
           </div>
 
-          <button 
+          <button
             onClick={toggleAuto}
-            title="Click to toggle between Auto and Manual Data Injection"
-            className="w-10 h-14 bg-[#1e2430] border-2 border-[#4b5563] rounded flex flex-col items-center justify-between p-1 shadow-inner cursor-pointer"
+            title="Click to toggle between Auto and Manual Drill Data Injection"
+            className="relative w-[62px] h-[36px] rounded-full border-[3px] border-white transition-all duration-300 shrink-0"
+            style={{
+              background: autoMode ? "#C3FFB5" : "#FFE6A5",
+              boxShadow: "inset 3px 3px 8px rgba(0,0,0,0.08), 8px 10px 20px rgba(120,110,150,0.18)"
+            }}
           >
-            <div className={`w-2 h-2 rounded-full ${autoMode ? "led-bulb-green" : "led-bulb-amber"}`}></div>
-            <div className={`w-3 h-6 bg-gradient-to-b from-[#f3f4f6] via-[#9ca3af] to-[#4b5563] rounded-full shadow-md border border-gray-600 transform transition-transform ${autoMode ? "-translate-y-2" : "translate-y-2"}`}></div>
+            <div 
+              className="absolute top-[2px] w-[26px] h-[26px] rounded-full border-[2.5px] border-white transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] flex items-center justify-center"
+              style={{
+                left: autoMode ? "28px" : "2px",
+                background: "#FFFFFF",
+                boxShadow: "inset 2px 2px 4px rgba(255,255,255,1), 2px 3px 8px rgba(0,0,0,0.12)",
+                transform: autoMode ? "scale(1.05)" : "scale(1)"
+              }}
+            >
+              <div 
+                className="w-[6px] h-[6px] rounded-full" 
+                style={{ background: autoMode ? "#3A5A2E" : "#874b0c" }} 
+              />
+            </div>
           </button>
         </div>
       </footer>
 
-      {/* MANUAL SCENARIO DRILL INJECTOR (ACTIVE WHEN AUTO-MODE IS OFF) */}
+      {/* CLAY MANUAL SCENARIO DRILL INJECTOR (ACTIVE WHEN AUTO-MODE IS OFF) */}
       {!autoMode && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="frame-wood max-w-lg w-full p-4 rounded-md shadow-2xl relative text-gray-200">
-            <div className="rivet absolute top-2 left-2"></div>
-            <div className="rivet absolute top-2 right-2"></div>
-            <div className="rivet absolute bottom-2 left-2"></div>
-            <div className="rivet absolute bottom-2 right-2"></div>
-
-            {/* Header Plate */}
-            <div className="bg-gradient-to-r from-[#ca9e5a] via-[#e5c583] to-[#b38843] border border-[#6b4e1b] py-1.5 px-3 rounded-sm shadow-sm flex items-center justify-between text-xs font-black tracking-wider text-[#2d1e07] mb-3">
-              <span className="flex items-center space-x-1.5">
-                <AlertTriangle size={14} className="text-[#991b1b]" />
-                <span>MANUAL SCENARIO DRILL INJECTOR [TRAINING OVERRIDE]</span>
-              </span>
+        <div className="fixed inset-0 bg-[#2F2940]/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="clay-device max-w-lg w-full p-6 relative">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#FFE6A5] border-2 border-white flex items-center justify-center">
+                  <AlertTriangle size={16} className="text-[#874b0c]" />
+                </div>
+                <span className="font-[800] text-[14px] text-[#2F2940]">
+                  MANUAL DRILL SCENARIO INJECTOR
+                </span>
+              </div>
               <button 
                 onClick={() => setAutoMode(true)}
-                className="text-gray-800 hover:text-red-900 font-black p-0.5"
-                title="Close and Return to Auto Mode"
+                className="w-8 h-8 rounded-full bg-white border-2 border-white flex items-center justify-center text-[#8E819E] hover:text-[#2F2940]"
+                style={{ boxShadow: '2px 2px 6px rgba(0,0,0,0.08)' }}
               >
                 <X size={16} />
               </button>
             </div>
 
-            <p className="text-[11px] text-gray-300 mb-3 leading-snug">
-              Auto-mode disabled. Inject custom hazard telemetry, simulate secondary disaster collapses, or inject casualties to evaluate autonomous swarm coordination.
+            <p className="text-[12px] font-[600] text-[#7B6E96] mb-4 leading-relaxed">
+              Auto-mode disabled. Inject custom disaster hazards and casualities to train the multi-agent swarm in real time.
             </p>
 
-            <div className="sub-panel-metal p-3 rounded text-[#1e293b] space-y-2.5 text-xs font-bold">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-3 font-[700] text-xs">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Incident Type</label>
+                  <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Incident Type</label>
                   <select 
                     value={customIncident.incident_type} 
                     onChange={(e) => setCustomIncident({ ...customIncident, incident_type: e.target.value })}
-                    className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-bold text-gray-900"
+                    className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[700] text-[#3E3650] outline-none"
                   >
                     <option value="structural_collapse">Structural Collapse</option>
                     <option value="gas_leak_explosion">Gas Line Explosion</option>
@@ -589,11 +597,11 @@ export default function SkeuomorphicCommandConsole() {
                 </div>
 
                 <div>
-                  <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Target Location</label>
+                  <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Target Location</label>
                   <select 
                     value={customIncident.location} 
                     onChange={(e) => setCustomIncident({ ...customIncident, location: e.target.value })}
-                    className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-bold text-gray-900"
+                    className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[700] text-[#3E3650] outline-none"
                   >
                     <option value="Sector_5C">Sector 5C (Building A)</option>
                     <option value="Sector_6B">Sector 6B (Subway Concourse)</option>
@@ -603,13 +611,13 @@ export default function SkeuomorphicCommandConsole() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Severity</label>
+                  <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Severity</label>
                   <select 
                     value={customIncident.severity} 
                     onChange={(e) => setCustomIncident({ ...customIncident, severity: e.target.value })}
-                    className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-bold text-red-700"
+                    className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[800] text-[#dc2626] outline-none"
                   >
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
@@ -618,11 +626,11 @@ export default function SkeuomorphicCommandConsole() {
                 </div>
 
                 <div>
-                  <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Block Road</label>
+                  <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Block Road</label>
                   <select 
                     value={customIncident.block_road} 
                     onChange={(e) => setCustomIncident({ ...customIncident, block_road: e.target.value })}
-                    className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-bold text-gray-900"
+                    className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[700] text-[#3E3650] outline-none"
                   >
                     <option value="Road_D4">Road D4</option>
                     <option value="Road_C3">Road C3</option>
@@ -632,42 +640,42 @@ export default function SkeuomorphicCommandConsole() {
                 </div>
 
                 <div>
-                  <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Casualties</label>
+                  <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Casualties</label>
                   <input 
                     type="number" 
                     min={1} 
                     max={15}
                     value={customIncident.patient_count}
                     onChange={(e) => setCustomIncident({ ...customIncident, patient_count: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-black text-gray-900"
+                    className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[800] text-[#2F2940] outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[9px] font-black uppercase text-gray-700 block mb-0.5">Incident Description / Telemetry Digest</label>
+                <label className="text-[10px] uppercase font-[800] text-[#9A8EB0] block mb-1">Incident Telemetry Details</label>
                 <textarea 
                   rows={2}
                   value={customIncident.details}
                   onChange={(e) => setCustomIncident({ ...customIncident, details: e.target.value })}
-                  className="w-full bg-white border border-gray-400 p-1.5 rounded text-xs font-mono text-gray-900"
+                  className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[600] text-[#3E3650] outline-none"
                 />
               </div>
 
-              <div className="flex items-center space-x-2 pt-1">
+              <div className="flex items-center gap-3 pt-2">
                 <button 
                   onClick={injectScenarioData}
-                  className="flex-1 plate-metal py-2 rounded text-xs font-black uppercase text-[#1e293b] flex items-center justify-center space-x-1.5 hover:bg-[#cbd5e1] transition shadow-md"
+                  className="flex-1 clay-button py-3 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] flex items-center justify-center gap-2"
                 >
-                  <Send size={13} />
+                  <Send size={14} />
                   <span>Transmit Scenario Data to Swarm</span>
                 </button>
 
                 <button 
                   onClick={() => setAutoMode(true)}
-                  className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs font-bold uppercase transition"
+                  className="clay-button px-5 py-3 rounded-full font-[800] text-xs bg-white text-[#7B6E96]"
                 >
-                  Return to Auto
+                  Back to Auto
                 </button>
               </div>
             </div>
