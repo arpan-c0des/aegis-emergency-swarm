@@ -1,0 +1,42 @@
+services:
+  # 1. AEGIS Python FastAPI Swarm Backend (with WebSockets)
+  - type: web
+    name: aegis-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        value: pNInz6obpgDQGcFmaJgB
+      - key: SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+
+  # 2. AEGIS Claymorphic Next.js 3D City Dashboard
+  - type: web
+    name: aegis-frontend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: ui
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_VERSION
+        value: 20.12.0
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: aegis-backend
+          property: host
+      - key: NEXT_PUBLIC_WS_URL
+        sync: false

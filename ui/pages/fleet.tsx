@@ -10,7 +10,7 @@ export default function FleetPage() {
   const [loading, setLoading] = useState(false);
   const [fleetUnits, setFleetUnits] = useState<any>({});
 
-  const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
   // Coordinates on the tactical SVG canvas for Manhattan nodes
   const nodeCoordinates: Record<string, { x: number; y: number; label: string }> = {
