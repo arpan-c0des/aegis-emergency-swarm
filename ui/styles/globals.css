@@ -195,6 +195,19 @@ button:focus-visible {
 }
 
 /* Tactical Leaflet Map Custom Overlays */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 460px !important;
+  background: #09090B !important;
+  z-index: 1 !important;
+}
+
+/* Tactical Dark Filter for Free OpenStreetMap Tiles (100% Key-Free & High-Contrast) */
+.tactical-dark-tiles {
+  filter: brightness(0.65) invert(1) contrast(2.4) hue-rotate(205deg) saturate(0.35) brightness(0.85);
+}
+
 .tactical-div-icon {
   background: transparent !important;
   border: none !important;

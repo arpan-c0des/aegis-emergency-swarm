@@ -770,7 +770,7 @@ export default function AegisTacticalCommandConsole() {
         {/* ======================================================================= */}
         {/* COLUMN 1: LEFT ASIDE (TELEMETRY, HOSPITAL BEDS, RLIF, SOLANA)           */}
         {/* ======================================================================= */}
-        <aside className="w-full shrink-0 lg:w-[280px] xl:w-[300px] flex flex-col gap-3 lg:overflow-y-auto scroll-thin lg:pr-0.5">
+        <aside className="w-full shrink-0 lg:w-[280px] xl:w-[300px] flex flex-col gap-3 lg:overflow-y-auto scroll-thin lg:pr-0.5 order-2 lg:order-1">
           {/* Card: 01 · Telemetry & Resources */}
           <section className="rounded-2xl border border-[#27272A] bg-[#131316] p-3 shadow-sm">
             <div className="flex items-center justify-between">
@@ -977,9 +977,9 @@ export default function AegisTacticalCommandConsole() {
         {/* ======================================================================= */}
         {/* COLUMN 2: CENTER VIEWPORT (3D TACTICAL CITY PERSPECTIVE & METRICS)       */}
         {/* ======================================================================= */}
-        <section className="min-w-0 flex-1 flex flex-col gap-3 lg:overflow-hidden">
+        <section className="min-w-0 flex-1 flex flex-col gap-3 lg:overflow-hidden order-1 lg:order-2">
           {/* Main Kolkata Leaflet Tactical Perspective Canvas Container */}
-          <div className={`relative min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-[#27272A] bg-[#09090B] transition-all duration-300 ${
+          <div className={`relative min-h-[460px] h-[520px] lg:h-auto flex-1 overflow-hidden rounded-2xl border border-[#27272A] bg-[#09090B] transition-all duration-300 ${
             isTheaterMode ? "lg:min-h-[640px]" : ""
           }`}>
             
@@ -1201,7 +1201,7 @@ export default function AegisTacticalCommandConsole() {
         {/* ======================================================================= */}
         {/* COLUMN 3: RIGHT ASIDE (SWARM NOTIFICATIONS FEED & SCENARIO DRILL TRAINER)*/}
         {/* ======================================================================= */}
-        <aside className="w-full shrink-0 lg:w-[320px] xl:w-[360px] flex flex-col gap-3 lg:overflow-y-auto scroll-thin lg:pr-0.5">
+        <aside className="w-full shrink-0 lg:w-[320px] xl:w-[360px] flex flex-col gap-3 lg:overflow-y-auto scroll-thin lg:pr-0.5 order-3 lg:order-3">
           
           {/* Quick View Mode Switcher for Right Aside */}
           <div className="flex items-center justify-between p-1 rounded-xl bg-[#131316] border border-[#27272A] shrink-0 text-[10px] font-mono">

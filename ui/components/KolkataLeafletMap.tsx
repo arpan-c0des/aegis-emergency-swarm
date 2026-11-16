@@ -86,7 +86,7 @@ export const KolkataLeafletMap: React.FC<Props> = ({
   const hazardsLayerRef = useRef<LeafletType.LayerGroup | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
-  const [activeTile, setActiveTile] = useState<'dark' | 'street'>('dark');
+  const [activeTile, setActiveTile] = useState<'dark' | 'satellite' | 'street'>('dark');
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
 
   // 1. Initialize Leaflet Map Centered on Kolkata
@@ -112,13 +112,14 @@ export const KolkataLeafletMap: React.FC<Props> = ({
         attributionControl: false,
       });
 
-      // Dark Tactical Tile Layer (CartoDB Dark Matter)
+      // High-Contrast Free OpenStreetMap with Dark Tactical Filter (100% key-free & reliable)
       const darkTiles = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         {
-          subdomains: 'abcd',
+          subdomains: ['a', 'b', 'c'],
           maxZoom: 19,
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+          className: 'tactical-dark-tiles',
+          attribution: '&copy; OpenStreetMap contributors'
         }
       ).addTo(map);
 
@@ -133,10 +134,20 @@ export const KolkataLeafletMap: React.FC<Props> = ({
       mapInstanceRef.current = map;
       setMapReady(true);
 
-      // Force resize calculation after DOM paint
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 250);
+      // Force multiple resize calculations as layout settles
+      [50, 150, 300, 600, 1200].forEach((delay) => {
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, delay);
+      });
+
+      // Active ResizeObserver to recalculate tiles on any viewport or flex layout change
+      if (typeof window !== 'undefined' && 'ResizeObserver' in window && mapContainerRef.current) {
+        const ro = new ResizeObserver(() => {
+          if (map) map.invalidateSize();
+        });
+        ro.observe(mapContainerRef.current);
+      }
     }
 
     initLeaflet();
@@ -480,7 +491,7 @@ export const KolkataLeafletMap: React.FC<Props> = ({
 
   }, [worldState, activeLayers, mapReady]);
 
-  // 5. Toggle Tile Theme (Tactical Dark vs Street)
+  // 5. Toggle Tile Theme (Tactical Dark vs Satellite vs Street)
   const toggleTileTheme = () => {
     if (!mapInstanceRef.current || !tileLayerRef.current || !LRef.current) return;
     const L = LRef.current;
@@ -489,17 +500,26 @@ export const KolkataLeafletMap: React.FC<Props> = ({
     map.removeLayer(tileLayerRef.current);
 
     if (activeTile === 'dark') {
+      const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '&copy; Esri World Imagery'
+      }).addTo(map);
+      tileLayerRef.current = satLayer;
+      setActiveTile('satellite');
+    } else if (activeTile === 'satellite') {
       const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
       tileLayerRef.current = streetLayer;
       setActiveTile('street');
     } else {
-      const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
+      const darkLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+        subdomains: ['a', 'b', 'c'],
+        className: 'tactical-dark-tiles',
+        attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
       tileLayerRef.current = darkLayer;
       setActiveTile('dark');
@@ -509,7 +529,11 @@ export const KolkataLeafletMap: React.FC<Props> = ({
   return (
     <div className="relative w-full h-full min-h-[460px] overflow-hidden rounded-2xl bg-[#09090B]">
       {/* Map DOM Canvas */}
-      <div ref={mapContainerRef} className="w-full h-full" />
+      <div 
+        ref={mapContainerRef} 
+        className="w-full h-full min-h-[460px]" 
+        style={{ width: '100%', height: '100%', minHeight: '460px', position: 'relative' }} 
+      />
 
       {/* Floating Tactical HUD Info Overlay on Top Left */}
       <div className="absolute top-3 left-3 z-[400] flex items-center gap-2 pointer-events-none">
@@ -529,14 +553,14 @@ export const KolkataLeafletMap: React.FC<Props> = ({
           className="px-2.5 py-1.5 rounded-xl bg-black/80 border border-white/10 text-[10px] font-bold text-[#A1A1AA] hover:text-white backdrop-blur-md transition shadow-lg pointer-events-auto"
           title="Toggle Tile Style"
         >
-          {activeTile === 'dark' ? '🗺️ SATELLITE / STREET' : '🕶️ TACTICAL DARK'}
+          {activeTile === 'dark' ? '🛰️ SATELLITE' : (activeTile === 'satellite' ? '🗺️ STREET' : '🕶️ TACTICAL DARK')}
         </button>
       </div>
 
       {/* Map Scale & Grid Status (Bottom Right) */}
       <div className="absolute bottom-3 right-3 z-[400] pointer-events-none hidden sm:block">
         <div className="px-2.5 py-1 rounded-lg bg-black/80 border border-white/10 text-[9px] font-mono text-[#71717A] backdrop-blur-md">
-          ZOOM {zoomLevel.toFixed(1)}× • CARTO/OSM KOLKATA
+          ZOOM {zoomLevel.toFixed(1)}× • KOLKATA SECTOR
         </div>
       </div>
     </div>
