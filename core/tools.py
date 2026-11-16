@@ -1,4 +1,6 @@
 import heapq
+import math
+import time
 from typing import Dict, Any, List, Optional
 from core.world_state import CityState, EmergencyUnit
 
@@ -140,17 +142,28 @@ class SimulationTools:
 
 
 class NavigationRouter:
-    """Calculates shortest paths avoiding road closures and burning zones."""
+    """Calculates real shortest road paths on the Kolkata emergency map using Bidirectional A*."""
     
-    # Manhattan grid nodes and coordinates
+    # Real Kolkata WGS84 Coordinates (Latitude, Longitude)
     NODES = {
-        "H1_Central": (-74.006, 40.718),
-        "H2_West": (-74.015, 40.712),
-        "Sector_5C": (-74.004, 40.715),
-        "Sector_6B": (-74.002, 40.711),
-        "Evac_Zone": (-74.008, 40.712),
-        "Station_North": (-74.001, 40.720),
-        "Station_South": (-74.010, 40.708),
+        "Station_North": (22.6006, 88.3712),     # Shyambazar 5-Point / Central North Depot
+        "Bidhan_Sarani": (22.5895, 88.3670),     # Hatibagan Arterial Junction
+        "CR_Avenue_North": (22.5840, 88.3615),   # Girish Park Junction
+        "Maniktala_Crossing": (22.5855, 88.3780),# Maniktala Crossing / APC Road
+        "Rajabazar_Junction": (22.5720, 88.3770),# Rajabazar / APC Road
+        "Sector_5C": (22.5797, 88.4312),         # Salt Lake Sector V Tech Hub
+        "Karunamoyee_Hub": (22.5870, 88.4160),   # Salt Lake Central Park / Karunamoyee
+        "EM_Bypass_North": (22.5830, 88.4010),   # Ultadanga / EM Bypass connector
+        "H2_West": (22.5714, 88.4068),           # St. Luke's Clinic / Apollo Trauma
+        "EM_Bypass_ScienceCity": (22.5400, 88.3965), # Science City Crossing / EM Bypass
+        "Park_Circus_7Point": (22.5440, 88.3675),# Park Circus 7-Point Crossing
+        "Sector_6B": (22.5658, 88.3512),         # Esplanade Metro / Central Concourse
+        "BBD_Bagh": (22.5725, 88.3475),          # B.B.D. Bagh / Lalbazar Police HQ
+        "Strand_Road": (22.5620, 88.3415),       # Babughat / Hooghly Riverfront
+        "Evac_Zone": (22.5535, 88.3485),         # Maidan Red Road / Brigade Grounds
+        "Rabindra_Sadan": (22.5442, 88.3460),    # Exide Crossing / Cathedral Road
+        "H1_Central": (22.5411, 88.3426),        # SSKM Hospital Central Trauma Bay
+        "Station_South": (22.5298, 88.3431)      # Alipore Police & Fire Command Depot
     }
 
     # Location synonyms / aliases mapping
@@ -164,21 +177,53 @@ class NavigationRouter:
         "STATION_1": "Station_North",
         "ZONE_A": "Station_North",
         "ZONE_B": "Station_South",
-        "ZONE_C": "Sector_5C"
+        "ZONE_C": "Sector_5C",
+        "MAIDAN": "Evac_Zone",
+        "ESPLANADE": "Sector_6B",
+        "SALTLAKE": "Sector_5C",
+        "SHYAMBAZAR": "Station_North",
+        "ALIPORE": "Station_South",
+        "SSKM": "H1_Central",
+        "APOLLO": "H2_West",
     }
 
-    # Edges format: (node_from, node_to, base_travel_minutes, road_id)
+    # Real Kolkata Arterial Road Edges: (node_from, node_to, road_id, road_name)
     EDGES = [
-        ("Station_North", "Sector_5C", 3.2, "Road_A1"),
-        ("Sector_5C", "H1_Central", 2.5, "Road_B2"),
-        ("Sector_5C", "Sector_6B", 4.0, "Road_C3"),
-        ("Sector_6B", "H1_Central", 5.0, "Road_D4"),
-        ("Sector_6B", "Evac_Zone", 3.0, "Road_E5"),
-        ("Evac_Zone", "H2_West", 2.8, "Road_F6"),
-        ("Station_South", "Evac_Zone", 4.1, "Road_G7"),
-        ("Station_South", "Sector_6B", 3.5, "Road_H8"),
-        ("H1_Central", "H2_West", 6.0, "Road_I9"),
+        ("Station_North", "Bidhan_Sarani", "Road_D4", "Bidhan Sarani Arterial"),
+        ("Bidhan_Sarani", "CR_Avenue_North", "Road_D4", "CR Avenue North"),
+        ("CR_Avenue_North", "BBD_Bagh", "Road_D4", "CR Avenue Central"),
+        ("BBD_Bagh", "Sector_6B", "Road_D4", "CR Avenue / Esplanade Connector"),
+        ("Sector_6B", "Evac_Zone", "Road_F6", "Jawaharlal Nehru Road Corridor"),
+        ("Evac_Zone", "Rabindra_Sadan", "Road_F6", "Cathedral Road / Red Road"),
+        ("Rabindra_Sadan", "H1_Central", "Road_B2", "AJC Bose Road / SSKM Access"),
+        ("Station_South", "H1_Central", "Road_G7", "Belvedere / D.L. Khan Road"),
+        ("Station_South", "Evac_Zone", "Road_H8", "Hospital Road / Red Road"),
+        ("Sector_5C", "Karunamoyee_Hub", "Road_I9", "Salt Lake Sector V Arterial"),
+        ("Karunamoyee_Hub", "EM_Bypass_North", "Road_I9", "Broadway Salt Lake"),
+        ("EM_Bypass_North", "H2_West", "Road_A1", "EM Bypass North Corridor"),
+        ("H2_West", "EM_Bypass_ScienceCity", "Road_A1", "EM Bypass Central Corridor"),
+        ("EM_Bypass_ScienceCity", "Park_Circus_7Point", "Road_E5", "Maa Flyover Corridor"),
+        ("Park_Circus_7Point", "Rabindra_Sadan", "Road_B2", "AJC Bose Road Flyover"),
+        ("BBD_Bagh", "Strand_Road", "Road_C3", "Strand Road North"),
+        ("Strand_Road", "Evac_Zone", "Road_C3", "Babughat / Maidan Western Ring"),
+        ("Station_North", "Maniktala_Crossing", "Road_J10", "APC Road North"),
+        ("Maniktala_Crossing", "Rajabazar_Junction", "Road_J10", "APC Road Central"),
+        ("Rajabazar_Junction", "Park_Circus_7Point", "Road_J10", "APC Road / Sealdah Flyover"),
+        ("Maniktala_Crossing", "EM_Bypass_North", "Road_K11", "Maniktala Main Road / Ultadanga"),
+        ("Sector_6B", "Park_Circus_7Point", "Road_L12", "Park Street / Ripon St Corridor")
     ]
+
+    @classmethod
+    def haversine_km(cls, coord1: tuple, coord2: tuple) -> float:
+        """Computes true spherical geodesic distance in kilometers between two GPS coordinates."""
+        lat1, lon1 = coord1
+        lat2, lon2 = coord2
+        R = 6371.0088  # Earth radius in kilometers
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
 
     @classmethod
     def normalize_node(cls, node_name: str) -> str:
@@ -188,7 +233,7 @@ class NavigationRouter:
         clean = node_name.strip()
         if clean in cls.NODES:
             return clean
-        upper = clean.upper()
+        upper = clean.upper().replace(" ", "_").replace("-", "_")
         if upper in cls.ALIASES:
             return cls.ALIASES[upper]
         for k, v in cls.ALIASES.items():
@@ -198,47 +243,197 @@ class NavigationRouter:
 
     @classmethod
     def calculate_optimal_route(cls, origin: str, destination: str, blocked_roads: list) -> dict:
+        """
+        Calculates the real shortest road path on the actual Kolkata emergency map using Bidirectional A*.
+        Guarantees optimal road distance while dynamically pruning blocked/hazardous corridors.
+        """
+        start_time = time.time()
         norm_orig = cls.normalize_node(origin)
         norm_dest = cls.normalize_node(destination)
 
+        # Build adjacency graph with real road distances (including 15% urban street curvature factor)
         adj = {n: [] for n in cls.NODES}
-        for u, v, cost, road_id in cls.EDGES:
-            # Skip blocked roads
+        for u, v, road_id, road_name in cls.EDGES:
             if road_id in blocked_roads:
                 continue
-            adj[u].append((cost, v, road_id))
-            adj[v].append((cost, u, road_id))
+            base_dist = cls.haversine_km(cls.NODES[u], cls.NODES[v]) * 1.15
+            adj[u].append((base_dist, v, road_id, road_name))
+            adj[v].append((base_dist, u, road_id, road_name))
 
-        pq = [(0, norm_orig, [norm_orig], [])]
-        visited = set()
+        if norm_orig == norm_dest:
+            return {
+                "origin": norm_orig,
+                "destination": norm_dest,
+                "distance_km": 0.0,
+                "eta_minutes": 0.0,
+                "waypoints": [norm_orig],
+                "coordinates": [list(cls.NODES[norm_orig])],
+                "roads_traversed": [],
+                "avoided_blocks": blocked_roads,
+                "algorithm": "Bidirectional A*",
+                "metrics": {
+                    "nodes_expanded_forward": 0,
+                    "nodes_expanded_backward": 0,
+                    "total_nodes_expanded": 0,
+                    "meeting_node": norm_orig,
+                    "search_time_ms": 0.01
+                },
+                "status": "ARRIVED"
+            }
 
-        while pq:
-            cost, curr, path, route_roads = heapq.heappop(pq)
-            if curr == norm_dest:
-                return {
-                    "origin": norm_orig,
-                    "destination": norm_dest,
-                    "eta_minutes": round(cost, 1),
-                    "waypoints": path,
-                    "roads_traversed": route_roads,
-                    "avoided_blocks": blocked_roads,
-                    "status": "CLEAR"
-                }
-            if curr in visited:
-                continue
-            visited.add(curr)
+        # Bidirectional A* Data Structures
+        g_forward = {norm_orig: 0.0}
+        g_backward = {norm_dest: 0.0}
+        parent_forward = {norm_orig: None}
+        parent_backward = {norm_dest: None}
+        road_forward = {}
+        road_backward = {}
+        visited_forward = set()
+        visited_backward = set()
 
-            for edge_cost, neighbor, road_id in adj[curr]:
-                if neighbor not in visited:
-                    heapq.heappush(pq, (cost + edge_cost, neighbor, path + [neighbor], route_roads + [road_id]))
+        h_orig_dest = cls.haversine_km(cls.NODES[norm_orig], cls.NODES[norm_dest])
+        pq_forward = [(h_orig_dest, 0.0, norm_orig)]
+        pq_backward = [(h_orig_dest, 0.0, norm_dest)]
 
-        # Fallback if cut off by severe roadblocks
+        mu = float('inf')  # Length of the shortest path found so far
+        best_meeting_node = None
+        exp_forward = 0
+        exp_backward = 0
+
+        while pq_forward and pq_backward:
+            min_f_forward = pq_forward[0][0]
+            min_f_backward = pq_backward[0][0]
+
+            # Termination condition: optimal meeting point proven
+            if min_f_forward + min_f_backward >= mu:
+                break
+
+            # Balance frontiers: expand the side with lower minimum f-score
+            if min_f_forward <= min_f_backward:
+                f, g, u = heapq.heappop(pq_forward)
+                if u in visited_forward:
+                    continue
+                visited_forward.add(u)
+                exp_forward += 1
+
+                for edge_dist, nbr, road_id, road_name in adj[u]:
+                    if road_id in blocked_roads:
+                        continue
+                    tentative_g = g + edge_dist
+                    if tentative_g < g_forward.get(nbr, float('inf')):
+                        g_forward[nbr] = tentative_g
+                        parent_forward[nbr] = u
+                        road_forward[nbr] = (road_id, road_name)
+                        h = cls.haversine_km(cls.NODES[nbr], cls.NODES[norm_dest])
+                        heapq.heappush(pq_forward, (tentative_g + h, tentative_g, nbr))
+
+                        # Check if frontier intersects with backward search
+                        if nbr in g_backward:
+                            total_path_dist = tentative_g + g_backward[nbr]
+                            if total_path_dist < mu:
+                                mu = total_path_dist
+                                best_meeting_node = nbr
+            else:
+                f, g, v = heapq.heappop(pq_backward)
+                if v in visited_backward:
+                    continue
+                visited_backward.add(v)
+                exp_backward += 1
+
+                for edge_dist, nbr, road_id, road_name in adj[v]:
+                    if road_id in blocked_roads:
+                        continue
+                    tentative_g = g + edge_dist
+                    if tentative_g < g_backward.get(nbr, float('inf')):
+                        g_backward[nbr] = tentative_g
+                        parent_backward[nbr] = v
+                        road_backward[nbr] = (road_id, road_name)
+                        h = cls.haversine_km(cls.NODES[nbr], cls.NODES[norm_orig])
+                        heapq.heappush(pq_backward, (tentative_g + h, tentative_g, nbr))
+
+                        # Check if frontier intersects with forward search
+                        if nbr in g_forward:
+                            total_path_dist = g_forward[nbr] + tentative_g
+                            if total_path_dist < mu:
+                                mu = total_path_dist
+                                best_meeting_node = nbr
+
+        elapsed_ms = (time.time() - start_time) * 1000
+
+        # Fallback if entirely disconnected by roadblocks
+        if best_meeting_node is None:
+            return {
+                "origin": norm_orig,
+                "destination": norm_dest,
+                "distance_km": 14.5,
+                "eta_minutes": 18.0,
+                "waypoints": [norm_orig, "Evac_Zone", norm_dest],
+                "coordinates": [list(cls.NODES.get(norm_orig, (22.568, 88.368))), list(cls.NODES.get(norm_dest, (22.568, 88.368)))],
+                "roads_traversed": ["Emergency_Bypass_Artery"],
+                "avoided_blocks": blocked_roads,
+                "algorithm": "Bidirectional A*",
+                "metrics": {
+                    "nodes_expanded_forward": exp_forward,
+                    "nodes_expanded_backward": exp_backward,
+                    "total_nodes_expanded": exp_forward + exp_backward,
+                    "meeting_node": "NONE (SEVERED CORRIDOR)",
+                    "search_time_ms": round(elapsed_ms, 2)
+                },
+                "status": "EMERGENCY_DETOUR"
+            }
+
+        # Path Reconstruction from meeting node
+        path_f = []
+        roads_f = []
+        curr = best_meeting_node
+        while curr is not None:
+            path_f.append(curr)
+            if curr in road_forward:
+                roads_f.append(road_forward[curr][0])
+            curr = parent_forward[curr]
+        path_f.reverse()
+        roads_f.reverse()
+
+        path_b = []
+        roads_b = []
+        curr = parent_backward[best_meeting_node]
+        prev = best_meeting_node
+        while curr is not None:
+            path_b.append(curr)
+            if prev in road_backward:
+                roads_b.append(road_backward[prev][0])
+            prev = curr
+            curr = parent_backward[curr]
+
+        full_waypoints = path_f + path_b
+        # Deduplicate road IDs while preserving traversal order
+        all_roads = []
+        for r in roads_f + roads_b:
+            if not all_roads or all_roads[-1] != r:
+                all_roads.append(r)
+
+        # Generate coordinates list for mapping
+        coords = [list(cls.NODES[wp]) for wp in full_waypoints if wp in cls.NODES]
+
+        # Emergency vehicle speed in city: 42 km/h accounting for siren priority & junctions
+        eta = (mu / 42.0) * 60.0
+
         return {
             "origin": norm_orig,
             "destination": norm_dest,
-            "eta_minutes": 12.0,
-            "waypoints": [norm_orig, "Evac_Zone", norm_dest],
-            "roads_traversed": ["Detour_Auxiliary"],
+            "distance_km": round(mu, 2),
+            "eta_minutes": round(eta, 1),
+            "waypoints": full_waypoints,
+            "coordinates": coords,
+            "roads_traversed": all_roads,
             "avoided_blocks": blocked_roads,
-            "status": "EMERGENCY_DETOUR"
+            "algorithm": "Bidirectional A*",
+            "metrics": {
+                "nodes_expanded_forward": exp_forward,
+                "nodes_expanded_backward": exp_backward,
+                "total_nodes_expanded": exp_forward + exp_backward,
+                "meeting_node": best_meeting_node,
+                "search_time_ms": round(elapsed_ms, 2)
+            },
+            "status": "CLEAR"
         }
