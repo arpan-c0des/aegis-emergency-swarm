@@ -1,51 +1,72 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { 
+  Flame, ShieldAlert, Crosshair, MapPin, Eye, Maximize2, 
+  RotateCcw, Compass, CloudRain, Sun, Activity, Truck, Building2, Bed
+} from 'lucide-react';
 
 interface Props {
   worldState?: any;
 }
 
-// 3D coordinate mapping for simulation sectors
+// 3D Landmark & Sector Coordinates
 const SECTOR_COORDS: Record<string, [number, number, number]> = {
-  Station_North: [-18, 0, -22],
-  Station_South: [-20, 0, 24],
-  Sector_5C: [16, 0, -16],
-  Building_A: [16, 0, -16],
-  Sector_6B: [20, 0, 18],
-  Building_C: [20, 0, 18],
-  Evac_Zone: [-18, 0, 18],
-  H1_Central: [0, 0, -48],
-  H1: [0, 0, -48],
-  H2_West: [0, 0, 48],
-  H2: [0, 0, 48]
+  Station_North: [-28, 0, -28],
+  Station_South: [-28, 0, 28],
+  Sector_5C: [26, 0, -24],
+  Building_A: [26, 0, -24],
+  Sector_6B: [28, 0, 26],
+  Building_C: [28, 0, 26],
+  Evac_Zone: [-22, 0, 20],
+  H1_Central: [0, 0, -42],
+  H1: [0, 0, -42],
+  H2_West: [0, 0, 42],
+  H2: [0, 0, 42]
 };
 
-// 3D coordinates for road barricade markers
-const ROAD_COORDS: Record<string, [number, number, number]> = {
-  Road_A1: [-4, 0.5, -20],
-  Road_B2: [4, 0.5, -18],
-  Road_C3: [18, 0.5, 0],
-  Road_D4: [6, 0.5, 8],
-  Road_E5: [4, 0.5, 20],
-  Road_F6: [-6, 0.5, 30],
-  Road_G7: [-20, 0.5, 6],
-  Road_H8: [0, 0.5, 24],
-  Road_I9: [24, 0.5, 0],
+// Road barricade marker coordinates
+const ROAD_BLOCK_COORDS: Record<string, [number, number, number]> = {
+  Road_A1: [-14, 0.4, -28],
+  Road_B2: [14, 0.4, -34],
+  Road_C3: [28, 0.4, 0],
+  Road_D4: [14, 0.4, -14],
+  Road_E5: [10, 0.4, 24],
+  Road_F6: [-10, 0.4, 32],
+  Road_G7: [-24, 0.4, 24],
+  Road_H8: [0, 0.4, 28],
+  Road_I9: [0, 0.4, 0],
 };
+
+interface InspectedEntity {
+  type: 'unit' | 'hospital' | 'incident';
+  title: string;
+  badge: string;
+  badgeColor: string;
+  details: { label: string; value: string | number }[];
+}
 
 export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const angleRef = useRef<number>(Math.PI / 3.5);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
-  // References to dynamic scene objects
-  const vehiclesMapRef = useRef<Map<string, THREE.Group>>(new Map());
-  const incidentsMapRef = useRef<Map<string, THREE.Group>>(new Map());
+  // Dynamic Scene Registries
+  const vehiclesMapRef = useRef<Map<string, { group: THREE.Group; targetPos: THREE.Vector3; flasherLeft: THREE.Mesh; flasherRight: THREE.Mesh; sirenLight: THREE.PointLight }>>(new Map());
+  const incidentsMapRef = useRef<Map<string, { group: THREE.Group; fireLight: THREE.PointLight; flameMesh: THREE.Mesh; smokePoints: THREE.Points }>>(new Map());
   const roadblocksMapRef = useRef<Map<string, THREE.Group>>(new Map());
+  const waterSprayRef = useRef<THREE.Points | null>(null);
+  const rainSystemRef = useRef<THREE.Points | null>(null);
+  const interactiveObjectsRef = useRef<THREE.Object3D[]>([]);
 
-  // Initialize Three.js Scene
+  // Selected Tactical Entity for Inspector Overlay
+  const [inspectedEntity, setInspectedEntity] = useState<InspectedEntity | null>(null);
+  const [weatherVisual, setWeatherVisual] = useState<boolean>(true);
+  const [activeCamPreset, setActiveCamPreset] = useState<string>('overview');
+
+  // 1. Scene Initialization
   useEffect(() => {
     if (!containerRef.current) return;
     const width = containerRef.current.clientWidth;
@@ -53,16 +74,15 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0xdce7f3);
-    scene.fog = new THREE.FogExp2(0xdce7f3, 0.0055);
+    scene.background = new THREE.Color(0xdce8f5);
+    scene.fog = new THREE.FogExp2(0xdce8f5, 0.005);
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 1, 1000);
+    const camera = new THREE.PerspectiveCamera(38, width / height, 1, 1000);
     cameraRef.current = camera;
-    const radius = 95;
-    camera.position.set(radius * Math.cos(angleRef.current), 55, radius * Math.sin(angleRef.current));
+    camera.position.set(75, 68, 75);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     rendererRef.current = renderer;
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -71,161 +91,475 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
 
     containerRef.current.replaceChildren(renderer.domElement);
 
-    // Natural lighting
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d9fa8, 1.2);
+    // Orbit Controls with Smooth Damping
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controlsRef.current = controls;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2.05; // Prevent dipping beneath ground
+    controls.minDistance = 25;
+    controls.maxDistance = 200;
+    controls.target.set(0, 0, 0);
+
+    // Natural Sun and Hemisphere Lighting
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8a99a8, 1.3);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff4e6, 2.2);
-    sunLight.position.set(45, 80, 40);
+    const sunLight = new THREE.DirectionalLight(0xfff6e6, 2.0);
+    sunLight.position.set(60, 95, 50);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 250;
+    sunLight.shadow.camera.left = -75;
+    sunLight.shadow.camera.right = 75;
+    sunLight.shadow.camera.top = 75;
+    sunLight.shadow.camera.bottom = -75;
+    sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    // Ground Plane
-    const groundGeo = new THREE.PlaneGeometry(160, 160);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0xc4d4bc, roughness: 0.9 });
+    // Ground Grass Terrain Base
+    const groundGeo = new THREE.PlaneGeometry(200, 200);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0xbed2b4, roughness: 0.95 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Sidewalk quadrants
-    const createSidewalk = (w: number, d: number, x: number, z: number) => {
-      const geo = new THREE.BoxGeometry(w, 0.4, d);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xd6d3cc, roughness: 0.8 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(x, 0.2, z);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-    };
-
-    createSidewalk(36, 36, -22, -22);
-    createSidewalk(36, 36, 22, -22);
-    createSidewalk(36, 36, -22, 22);
-    createSidewalk(36, 36, 22, 22);
-
-    // Asphalt Roads (Intersection grid)
-    const createRoad = (w: number, d: number, x: number, z: number) => {
-      const geo = new THREE.PlaneGeometry(w, d);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x3d434a, roughness: 0.6 });
-      const road = new THREE.Mesh(geo, mat);
-      road.rotation.x = -Math.PI / 2;
-      road.position.set(x, 0.05, z);
-      road.receiveShadow = true;
-      scene.add(road);
-    };
-
-    createRoad(8, 160, 0, 0); // Avenue (N-S)
-    createRoad(160, 8, 0, 0); // Boulevard (E-W)
-
-    // Road Stripes
+    // ==========================================
+    // 2. URBAN INFRASTRUCTURE & STREET GRID
+    // ==========================================
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x383e47, roughness: 0.55 });
     const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    for (let i = -70; i <= 70; i += 7) {
-      if (Math.abs(i) < 8) continue;
-      const s1 = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 3.5), stripeMat);
-      s1.rotation.x = -Math.PI / 2;
-      s1.position.set(0, 0.06, i);
-      scene.add(s1);
+    const yellowStripeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+    const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0xd3cfc7, roughness: 0.85 });
 
-      const s2 = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 0.3), stripeMat);
-      s2.rotation.x = -Math.PI / 2;
-      s2.position.set(i, 0.06, 0);
-      scene.add(s2);
+    // Main Avenue (North-South, 10m wide)
+    const avenueGeo = new THREE.PlaneGeometry(10, 180);
+    const avenue = new THREE.Mesh(avenueGeo, roadMat);
+    avenue.rotation.x = -Math.PI / 2;
+    avenue.position.set(0, 0.04, 0);
+    avenue.receiveShadow = true;
+    scene.add(avenue);
+
+    // Main Boulevard (East-West, 10m wide)
+    const blvdGeo = new THREE.PlaneGeometry(180, 10);
+    const blvd = new THREE.Mesh(blvdGeo, roadMat);
+    blvd.rotation.x = -Math.PI / 2;
+    blvd.position.set(0, 0.04, 0);
+    blvd.receiveShadow = true;
+    scene.add(blvd);
+
+    // Secondary Cross Streets connecting outer sectors
+    const cross1 = new THREE.Mesh(new THREE.PlaneGeometry(6, 120), roadMat);
+    cross1.rotation.x = -Math.PI / 2;
+    cross1.position.set(28, 0.038, 0);
+    cross1.receiveShadow = true;
+    scene.add(cross1);
+
+    const cross2 = new THREE.Mesh(new THREE.PlaneGeometry(6, 120), roadMat);
+    cross2.rotation.x = -Math.PI / 2;
+    cross2.position.set(-28, 0.038, 0);
+    cross2.receiveShadow = true;
+    scene.add(cross2);
+
+    const cross3 = new THREE.Mesh(new THREE.PlaneGeometry(120, 6), roadMat);
+    cross3.rotation.x = -Math.PI / 2;
+    cross3.position.set(0, 0.038, -28);
+    cross3.receiveShadow = true;
+    scene.add(cross3);
+
+    const cross4 = new THREE.Mesh(new THREE.PlaneGeometry(120, 6), roadMat);
+    cross4.rotation.x = -Math.PI / 2;
+    cross4.position.set(0, 0.038, 28);
+    cross4.receiveShadow = true;
+    scene.add(cross4);
+
+    // Double Yellow Centerlines & White Dashed Markings
+    for (let z = -80; z <= 80; z += 6) {
+      if (Math.abs(z) < 10) continue;
+      // Avenue divider
+      const yLine1 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 4.5), yellowStripeMat);
+      yLine1.rotation.x = -Math.PI / 2;
+      yLine1.position.set(-0.2, 0.05, z);
+      scene.add(yLine1);
+      const yLine2 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 4.5), yellowStripeMat);
+      yLine2.rotation.x = -Math.PI / 2;
+      yLine2.position.set(0.2, 0.05, z);
+      scene.add(yLine2);
+
+      // White lane dashes
+      const wDash1 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 2.5), stripeMat);
+      wDash1.rotation.x = -Math.PI / 2;
+      wDash1.position.set(2.8, 0.05, z);
+      scene.add(wDash1);
+      const wDash2 = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 2.5), stripeMat);
+      wDash2.rotation.x = -Math.PI / 2;
+      wDash2.position.set(-2.8, 0.05, z);
+      scene.add(wDash2);
     }
 
-    // Buildings Group
+    // Boulevard Markings (East-West)
+    for (let x = -80; x <= 80; x += 6) {
+      if (Math.abs(x) < 10) continue;
+      const yLine = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 0.3), yellowStripeMat);
+      yLine.rotation.x = -Math.PI / 2;
+      yLine.position.set(x, 0.05, 0);
+      scene.add(yLine);
+    }
+
+    // Pedestrian Zebra Crossings at Central Intersection
+    const createCrosswalk = (cx: number, cz: number, isHoriz: boolean) => {
+      for (let s = -4; s <= 4; s += 1.4) {
+        const stripe = new THREE.Mesh(new THREE.PlaneGeometry(isHoriz ? 0.7 : 2.8, isHoriz ? 2.8 : 0.7), stripeMat);
+        stripe.rotation.x = -Math.PI / 2;
+        stripe.position.set(cx + (isHoriz ? s : 0), 0.06, cz + (!isHoriz ? s : 0));
+        scene.add(stripe);
+      }
+    };
+    createCrosswalk(0, -6.8, true);
+    createCrosswalk(0, 6.8, true);
+    createCrosswalk(-6.8, 0, false);
+    createCrosswalk(6.8, 0, false);
+
+    // Sidewalk Islands
+    const buildSidewalkBlock = (w: number, d: number, x: number, z: number) => {
+      const sw = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, d), sidewalkMat);
+      sw.position.set(x, 0.22, z);
+      sw.receiveShadow = true;
+      scene.add(sw);
+    };
+    buildSidewalkBlock(18, 18, -16, -16);
+    buildSidewalkBlock(18, 18, 16, -16);
+    buildSidewalkBlock(18, 18, -16, 16);
+    buildSidewalkBlock(18, 18, 16, 16);
+
+    // ==========================================
+    // 3. ARCHITECTURAL DISTRICTS & LANDMARKS
+    // ==========================================
     const buildingsGroup = new THREE.Group();
     scene.add(buildingsGroup);
 
-    const cityBuildings = [
-      // NW Block
-      { x: -28, z: -28, w: 9, d: 8, h: 8, color: 0xdfcbaf, roofColor: 0x9e3f32 },
-      { x: -16, z: -28, w: 9, d: 10, h: 12, color: 0xced6df, roofColor: 0x4a5d73 },
-      { x: -26, z: -16, w: 11, d: 8, h: 9, color: 0xe6e0d3, roofColor: 0xb55a30 },
-      // NE Block (Sector 5C - Primary Hazard Zone)
-      { x: 16, z: -16, w: 10, d: 9, h: 9, color: 0xcf8a7e, roofColor: 0x733227 },
-      { x: 28, z: -16, w: 9, d: 8, h: 11, color: 0xdfd8c8, roofColor: 0x8b4334 },
-      { x: 18, z: -28, w: 11, d: 8, h: 8, color: 0xd0d5db, roofColor: 0x495b6c },
-      // SW Block
-      { x: -28, z: 18, w: 10, d: 8, h: 10, color: 0xdde4ec, roofColor: 0x3d4b5c },
-      { x: -16, z: 18, w: 9, d: 9, h: 7, color: 0xe5dfd3, roofColor: 0xa4523b },
-      // SE Block (Sector 6B - Secondary Explosion Zone)
-      { x: 16, z: 18, w: 10, d: 10, h: 9, color: 0xeadcc9, roofColor: 0x994838 },
-      { x: 29, z: 18, w: 9, d: 8, h: 8, color: 0xd3dce5, roofColor: 0x495c6e },
-      { x: 18, z: 30, w: 8, d: 8, h: 6, color: 0xe0d6c4, roofColor: 0xa6593a }
+    // --- LANDMARK 1: CENTRAL TRAUMA HOSPITAL (H1) [North Avenue] ---
+    const hospitalGroup = new THREE.Group();
+    hospitalGroup.position.set(0, 0, -46);
+    hospitalGroup.userData = { type: 'hospital', id: 'H1', name: 'Central Trauma Hospital' };
+
+    // Main ICU Tower
+    const h1Main = new THREE.Mesh(
+      new THREE.BoxGeometry(16, 18, 14),
+      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.3, metalness: 0.1 })
+    );
+    h1Main.position.y = 9;
+    h1Main.castShadow = true;
+    h1Main.receiveShadow = true;
+    hospitalGroup.add(h1Main);
+
+    // Clinical Wings
+    const h1EastWing = new THREE.Mesh(new THREE.BoxGeometry(8, 10, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 }));
+    h1EastWing.position.set(12, 5, 0);
+    h1EastWing.castShadow = true;
+    hospitalGroup.add(h1EastWing);
+
+    const h1WestWing = new THREE.Mesh(new THREE.BoxGeometry(8, 10, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 }));
+    h1WestWing.position.set(-12, 5, 0);
+    h1WestWing.castShadow = true;
+    hospitalGroup.add(h1WestWing);
+
+    // Rooftop Helipad
+    const helipadRing = new THREE.Mesh(
+      new THREE.RingGeometry(4.2, 4.6, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    helipadRing.rotation.x = -Math.PI / 2;
+    helipadRing.position.set(0, 18.06, 0);
+    hospitalGroup.add(helipadRing);
+
+    // Red Cross Signage
+    const redCrossV = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xdc2626 }));
+    redCrossV.position.set(0, 12, 7.15);
+    hospitalGroup.add(redCrossV);
+    const redCrossH = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.8, 0.2), new THREE.MeshBasicMaterial({ color: 0xdc2626 }));
+    redCrossH.position.set(0, 12, 7.15);
+    hospitalGroup.add(redCrossH);
+
+    // Emergency Bay Drive-Thru Canopy
+    const erCanopy = new THREE.Mesh(new THREE.BoxGeometry(10, 0.4, 5), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+    erCanopy.position.set(0, 3.5, 9.5);
+    hospitalGroup.add(erCanopy);
+
+    scene.add(hospitalGroup);
+    interactiveObjectsRef.current.push(h1Main);
+
+    // --- LANDMARK 2: ST. LUKE'S COMMUNITY CLINIC (H2) [South Avenue] ---
+    const h2Group = new THREE.Group();
+    h2Group.position.set(0, 0, 44);
+    h2Group.userData = { type: 'hospital', id: 'H2', name: "St. Luke's Community Clinic" };
+
+    const h2Body = new THREE.Mesh(new THREE.BoxGeometry(14, 7, 10), new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.6 }));
+    h2Body.position.y = 3.5;
+    h2Body.castShadow = true;
+    h2Group.add(h2Body);
+
+    const h2Sign = new THREE.Mesh(new THREE.BoxGeometry(6, 1.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xd97706 }));
+    h2Sign.position.set(0, 6, -5.15);
+    h2Group.add(h2Sign);
+
+    scene.add(h2Group);
+    interactiveObjectsRef.current.push(h2Body);
+
+    // --- LANDMARK 3: SECTOR 5C (BUILDING A) - ACTIVE FIRE INDUSTRIAL ZONE [NE] ---
+    const sec5CGroup = new THREE.Group();
+    sec5CGroup.position.set(26, 0, -24);
+    sec5CGroup.userData = { type: 'incident', id: 'INC_01', name: 'Sector 5C Structural Fire' };
+
+    // Industrial Warehouse
+    const indFactory = new THREE.Mesh(new THREE.BoxGeometry(14, 11, 12), new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.8 }));
+    indFactory.position.y = 5.5;
+    indFactory.castShadow = true;
+    indFactory.receiveShadow = true;
+    sec5CGroup.add(indFactory);
+
+    // Factory Smokestack Chimney
+    const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.2, 16, 12), new THREE.MeshStandardMaterial({ color: 0x44403c }));
+    chimney.position.set(5.5, 8, -4.5);
+    chimney.castShadow = true;
+    sec5CGroup.add(chimney);
+
+    // Chemical Storage Tanks
+    const tank1 = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 5.5, 16), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
+    tank1.position.set(-5.5, 2.75, 4.5);
+    sec5CGroup.add(tank1);
+
+    scene.add(sec5CGroup);
+    interactiveObjectsRef.current.push(indFactory);
+
+    // --- LANDMARK 4: SECTOR 6B (SUBWAY CONCOURSE & SKYSCRAPERS) [SE] ---
+    const sec6BGroup = new THREE.Group();
+    sec6BGroup.position.set(28, 0, 26);
+    sec6BGroup.userData = { type: 'incident', id: 'INC_02', name: 'Sector 6B Subway Concourse' };
+
+    // Glass Tower 1
+    const tower1 = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 28, 9),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.1, metalness: 0.8 })
+    );
+    tower1.position.set(-2, 14, 0);
+    tower1.castShadow = true;
+    sec6BGroup.add(tower1);
+
+    // Spire
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.4, 8, 8), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 }));
+    spire.position.set(-2, 32, 0);
+    sec6BGroup.add(spire);
+
+    // Glass Tower 2
+    const tower2 = new THREE.Mesh(
+      new THREE.BoxGeometry(9, 20, 9),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.2, metalness: 0.6 })
+    );
+    tower2.position.set(7, 10, -2);
+    tower2.castShadow = true;
+    sec6BGroup.add(tower2);
+
+    // Subway Canopy Portal
+    const subwayEntrance = new THREE.Mesh(new THREE.BoxGeometry(5, 1.8, 4), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+    subwayEntrance.position.set(-6, 0.9, 8);
+    sec6BGroup.add(subwayEntrance);
+
+    scene.add(sec6BGroup);
+    interactiveObjectsRef.current.push(tower1);
+
+    // --- LANDMARK 5: STATION NORTH (FIRE & RESCUE HEADQUARTERS) [NW] ---
+    const stnNorthGroup = new THREE.Group();
+    stnNorthGroup.position.set(-28, 0, -28);
+    const fireStnBody = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 12), new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 }));
+    fireStnBody.position.y = 4;
+    fireStnBody.castShadow = true;
+    stnNorthGroup.add(fireStnBody);
+    scene.add(stnNorthGroup);
+
+    // --- LANDMARK 6: STATION SOUTH (POLICE PRECINCT) [SW] ---
+    const stnSouthGroup = new THREE.Group();
+    stnSouthGroup.position.set(-28, 0, 28);
+    const policeStnBody = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 12), new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 }));
+    policeStnBody.position.y = 4;
+    policeStnBody.castShadow = true;
+    stnSouthGroup.add(policeStnBody);
+    scene.add(stnSouthGroup);
+
+    // --- GENERAL URBAN MID-RISE RESIDENCES ---
+    const normalBuildings = [
+      { x: -16, z: -16, w: 9, d: 8, h: 9, color: 0xdfcbaf, roof: 'pitch', roofColor: 0xb55a30 },
+      { x: 16, z: -16, w: 8, d: 8, h: 8, color: 0xdde4ec, roof: 'flat', roofColor: 0x3d4b5c },
+      { x: -16, z: 16, w: 9, d: 9, h: 10, color: 0xe5dfd3, roof: 'pitch', roofColor: 0x874033 },
+      { x: 16, z: 16, w: 9, d: 8, h: 9, color: 0xd3dce5, roof: 'flat', roofColor: 0x495c6e },
     ];
 
-    cityBuildings.forEach((b) => {
-      const bMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(b.w, b.h, b.d),
-        new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.7 })
-      );
-      bMesh.position.set(b.x, b.h / 2 + 0.4, b.z);
+    normalBuildings.forEach((b) => {
+      const bMesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.7 }));
+      bMesh.position.set(b.x, b.h / 2 + 0.45, b.z);
       bMesh.castShadow = true;
-      bMesh.receiveShadow = true;
       buildingsGroup.add(bMesh);
 
-      // Roof Trim
-      const roofTrim = new THREE.Mesh(
-        new THREE.BoxGeometry(b.w + 0.4, 0.4, b.d + 0.4),
-        new THREE.MeshStandardMaterial({ color: b.roofColor, roughness: 0.5 })
-      );
-      roofTrim.position.set(b.x, b.h + 0.4, b.z);
-      buildingsGroup.add(roofTrim);
+      if (b.roof === 'pitch') {
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(b.w, b.d) * 0.75, 3.2, 4), new THREE.MeshStandardMaterial({ color: b.roofColor, roughness: 0.6 }));
+        roof.rotation.y = Math.PI / 4;
+        roof.position.set(b.x, b.h + 2.05, b.z);
+        roof.castShadow = true;
+        buildingsGroup.add(roof);
+      }
     });
 
-    // Evacuation Zone Polygon
-    const evacGeo = new THREE.CylinderGeometry(14, 14, 0.3, 32);
-    const evacMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.22 });
-    const evacZone = new THREE.Mesh(evacGeo, evacMat);
-    evacZone.position.set(-18, 0.2, 18);
-    scene.add(evacZone);
+    // Street Trees
+    const treeMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, roughness: 0.8 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+    const plantTree = (tx: number, tz: number) => {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 2.0), trunkMat);
+      trunk.position.set(tx, 1.2, tz);
+      trunk.castShadow = true;
+      scene.add(trunk);
 
-    // Evacuation Ring
-    const ringGeo = new THREE.RingGeometry(13.8, 14.2, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xd97706, side: THREE.DoubleSide });
-    const evacRing = new THREE.Mesh(ringGeo, ringMat);
-    evacRing.rotation.x = -Math.PI / 2;
-    evacRing.position.set(-18, 0.35, 18);
-    scene.add(evacRing);
+      const foliage = new THREE.Mesh(new THREE.DodecahedronGeometry(1.3), treeMat);
+      foliage.position.set(tx, 2.7, tz);
+      foliage.castShadow = true;
+      scene.add(foliage);
+    };
+    [[-6, -14], [-6, -24], [-6, 14], [-6, 24], [6, -14], [6, 14], [-14, 6], [14, -6]].forEach(([tx, tz]) => plantTree(tx, tz));
 
-    // Animation Loop
+    // Street Lamps with Warm Cones
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8 });
+    const lampGlowMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+    const addLamp = (lx: number, lz: number) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 4.5), lampMat);
+      pole.position.set(lx, 2.25, lz);
+      scene.add(pole);
+
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), lampGlowMat);
+      bulb.position.set(lx, 4.5, lz);
+      scene.add(bulb);
+    };
+    [[-5.8, -10], [-5.8, 10], [5.8, -10], [5.8, 10], [-10, -5.8], [10, -5.8]].forEach(([lx, lz]) => addLamp(lx, lz));
+
+    // ==========================================
+    // 4. WATER SPRAY HOSE STREAM (FOR FIRE SUPPRESSION)
+    // ==========================================
+    const sprayParticles = 40;
+    const sprayGeo = new THREE.BufferGeometry();
+    const sprayPos = new Float32Array(sprayParticles * 3);
+    sprayGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
+    const sprayMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 1.2, transparent: true, opacity: 0.85 });
+    const waterSpray = new THREE.Points(sprayGeo, sprayMat);
+    waterSpray.visible = false;
+    scene.add(waterSpray);
+    waterSprayRef.current = waterSpray;
+
+    // ==========================================
+    // 5. ATMOSPHERIC RAIN PARTICLE SYSTEM
+    // ==========================================
+    const rainCount = 900;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount * 3; i += 3) {
+      rainPositions[i] = (Math.random() - 0.5) * 140;
+      rainPositions[i + 1] = Math.random() * 60;
+      rainPositions[i + 2] = (Math.random() - 0.5) * 140;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0x93c5fd,
+      size: 0.6,
+      transparent: true,
+      opacity: 0.55
+    });
+    const rainSystem = new THREE.Points(rainGeo, rainMat);
+    scene.add(rainSystem);
+    rainSystemRef.current = rainSystem;
+
+    // ==========================================
+    // 6. ANIMATION & RENDER LOOP
+    // ==========================================
     let animId: number;
     const clock = new THREE.Clock();
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const delta = clock.getElapsedTime();
+      const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
 
-      // Animate active incident smoke and fire glow
-      incidentsMapRef.current.forEach((grp) => {
-        grp.children.forEach((child) => {
-          if (child instanceof THREE.PointLight) {
-            child.intensity = 2.5 + Math.sin(delta * 14) * 1.5;
-          } else if (child instanceof THREE.Points) {
-            const pos = child.geometry.attributes.position.array as Float32Array;
-            for (let i = 1; i < pos.length; i += 3) {
-              pos[i] += 0.08;
-              if (pos[i] > 18) pos[i] = 4;
-            }
-            child.geometry.attributes.position.needsUpdate = true;
-          }
-        });
-      });
+      // Update Orbit Controls Damping
+      controls.update();
 
-      // Flasher animations on dispatched vehicles
-      vehiclesMapRef.current.forEach((veh) => {
-        const flasher = veh.getObjectByName("flasher");
-        if (flasher && flasher instanceof THREE.Mesh) {
-          (flasher.material as THREE.MeshBasicMaterial).opacity = (Math.sin(delta * 18) > 0) ? 1.0 : 0.2;
+      // Animate Vehicles: Smooth Interpolation Towards Assigned Targets
+      vehiclesMapRef.current.forEach(({ group, targetPos, flasherLeft, flasherRight, sirenLight }) => {
+        // Position lerp
+        group.position.lerp(targetPos, delta * 2.8);
+
+        // Turn heading towards target
+        const dir = new THREE.Vector3().subVectors(targetPos, group.position);
+        if (dir.length() > 0.4) {
+          const targetAngle = Math.atan2(dir.x, dir.z);
+          group.rotation.y = THREE.MathUtils.lerp(group.rotation.y, targetAngle, delta * 3.5);
         }
+
+        // Flasher & Rotating Siren Beacon
+        const flashPhase = Math.sin(elapsed * 16);
+        (flasherLeft.material as THREE.MeshBasicMaterial).opacity = flashPhase > 0 ? 1.0 : 0.2;
+        (flasherRight.material as THREE.MeshBasicMaterial).opacity = flashPhase <= 0 ? 1.0 : 0.2;
+        sirenLight.intensity = flashPhase > 0 ? 3.0 : 0.8;
       });
+
+      // Animate Active Fires & Smoke Particles
+      incidentsMapRef.current.forEach(({ fireLight, flameMesh, smokePoints }) => {
+        // Fire turbulence
+        fireLight.intensity = 3.0 + Math.sin(elapsed * 18) * 1.8;
+        flameMesh.scale.set(
+          1.0 + Math.sin(elapsed * 12) * 0.15,
+          1.0 + Math.sin(elapsed * 20) * 0.2,
+          1.0 + Math.sin(elapsed * 15) * 0.15
+        );
+
+        // Rising smoke plume
+        const sPos = smokePoints.geometry.attributes.position.array as Float32Array;
+        for (let i = 1; i < sPos.length; i += 3) {
+          sPos[i] += 0.12;
+          if (sPos[i] > 20) sPos[i] = 4;
+        }
+        smokePoints.geometry.attributes.position.needsUpdate = true;
+      });
+
+      // Animate Water Suppression Stream
+      if (waterSpray.visible) {
+        const wPos = waterSpray.geometry.attributes.position.array as Float32Array;
+        for (let i = 0; i < wPos.length; i += 3) {
+          wPos[i] += 0.35;
+          wPos[i + 1] = Math.max(0.5, wPos[i + 1] - 0.08);
+          if (wPos[i] > 26) {
+            wPos[i] = 16;
+            wPos[i + 1] = 4;
+          }
+        }
+        waterSpray.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Animate Atmospheric Rain
+      if (rainSystem.visible) {
+        const rPos = rainSystem.geometry.attributes.position.array as Float32Array;
+        for (let i = 1; i < rPos.length; i += 3) {
+          rPos[i] -= 1.2;
+          if (rPos[i] < 0) rPos[i] = 60;
+        }
+        rainSystem.geometry.attributes.position.needsUpdate = true;
+      }
 
       renderer.render(scene, camera);
     };
     animate();
 
+    // Resize Handler
     const handleResize = () => {
       if (!containerRef.current || !renderer || !camera) return;
       const w = containerRef.current.clientWidth;
@@ -236,129 +570,277 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
     };
     window.addEventListener('resize', handleResize);
 
+    // Interactive Raycast Click Handler
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current || !camera) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactiveObjectsRef.current, true);
+
+      if (intersects.length > 0) {
+        let rootObj: THREE.Object3D | null = intersects[0].object;
+        while (rootObj && !rootObj.userData?.type && rootObj.parent) {
+          rootObj = rootObj.parent;
+        }
+        if (rootObj && rootObj.userData?.type) {
+          const uData = rootObj.userData;
+          if (uData.type === 'unit') {
+            setInspectedEntity({
+              type: 'unit',
+              title: `${uData.callsign} (${uData.id})`,
+              badge: uData.unit_type?.toUpperCase() || 'UNIT',
+              badgeColor: '#B5DEFF',
+              details: [
+                { label: 'Status', value: uData.status?.toUpperCase() || 'AVAILABLE' },
+                { label: 'Current Sector', value: uData.location || 'Station' },
+                { label: 'Fuel Remaining', value: `${uData.fuel} mins` },
+                { label: 'Mission', value: uData.assigned_target ? `Enroute to ${uData.assigned_target}` : 'Standby / Patrol' }
+              ]
+            });
+          } else if (uData.type === 'hospital') {
+            setInspectedEntity({
+              type: 'hospital',
+              title: uData.name,
+              badge: 'FACILITY',
+              badgeColor: '#C3FFB5',
+              details: [
+                { label: 'Trauma Capability', value: uData.id === 'H1' ? 'Level 1 Trauma' : 'Urgent Clinic' },
+                { label: 'Bed Capacity', value: uData.id === 'H1' ? '28 / 37 Free' : '12 / 29 Free' },
+                { label: 'Backup Power', value: 'Nominal Grid (100%)' }
+              ]
+            });
+          } else if (uData.type === 'incident') {
+            setInspectedEntity({
+              type: 'incident',
+              title: uData.name,
+              badge: 'ACTIVE HAZARD',
+              badgeColor: '#FFE6A5',
+              details: [
+                { label: 'Incident Code', value: uData.id },
+                { label: 'Perimeter Hazard', value: 'Structural Collapse / Flash Fire' },
+                { label: 'Recommended Action', value: 'Engage suppression & establish 300m cordon' }
+              ]
+            });
+          }
+        }
+      }
+    };
+    const domElem = renderer.domElement;
+    domElem.addEventListener('pointerdown', handlePointerDown);
+
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      domElem.removeEventListener('pointerdown', handlePointerDown);
       renderer.dispose();
+      controls.dispose();
     };
   }, []);
 
-  // Synchronize 3D scene whenever worldState updates
+  // 2. Synchronize Dynamic Entities with `worldState`
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene || !worldState) return;
 
-    // Helper: Build a vehicle model
-    const buildVehicleModel = (type: string, callsign: string) => {
+    // Toggle Rain visibility based on worldState weather
+    const isRaining = worldState.weather?.includes('rain') || worldState.weather?.includes('flood');
+    if (rainSystemRef.current) {
+      rainSystemRef.current.visible = weatherVisual && isRaining;
+    }
+    if (scene) {
+      scene.fog = new THREE.FogExp2(
+        isRaining ? 0xb0c4de : 0xdce8f5,
+        isRaining ? 0.0075 : 0.005
+      );
+    }
+
+    // Helper: Build Vehicle Mesh with Dual Flashers and Spotlight
+    const buildVehicleModel = (type: string, callsign: string, id: string) => {
       const v = new THREE.Group();
       v.name = callsign;
+      v.userData = { type: 'unit', callsign, id, unit_type: type };
 
       const isAmbulance = type === "ambulance";
       const isFire = type === "fire_truck";
-      const bodyColor = isAmbulance ? 0xffffff : isFire ? 0xcc291f : 0x193b68;
+      const bodyColor = isAmbulance ? 0xffffff : isFire ? 0xb91c1c : 0x1e3a8a;
 
+      // Main Chassis
       const body = new THREE.Mesh(
-        new THREE.BoxGeometry(2.4, 1.3, isFire ? 4.8 : 4.0),
-        new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.4 })
+        new THREE.BoxGeometry(2.4, 1.4, isFire ? 5.2 : 4.2),
+        new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.35, metalness: 0.15 })
       );
       body.position.y = 1.0;
       body.castShadow = true;
+      body.receiveShadow = true;
       v.add(body);
 
-      // Cabin windshield
+      // Cabin Windshield
       const windShield = new THREE.Mesh(
-        new THREE.BoxGeometry(2.1, 0.7, 1.4),
-        new THREE.MeshStandardMaterial({ color: 0x223040, roughness: 0.1 })
+        new THREE.BoxGeometry(2.1, 0.75, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 })
       );
-      windShield.position.set(0, 1.7, 0.3);
+      windShield.position.set(0, 1.75, 0.5);
       v.add(windShield);
 
-      // Flasher
-      const flasherMat = new THREE.MeshBasicMaterial({
-        color: isAmbulance ? 0xff0044 : isFire ? 0xff8800 : 0x0088ff,
-        transparent: true
-      });
-      const flasher = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.5), flasherMat);
-      flasher.name = "flasher";
-      flasher.position.set(0, 2.15, 0.3);
-      v.add(flasher);
+      // Dual Red & Blue Roof Emergency Flashers
+      const flasherLeft = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.3, 0.4),
+        new THREE.MeshBasicMaterial({ color: 0xff0044, transparent: true })
+      );
+      flasherLeft.position.set(-0.5, 2.2, 0.5);
+      v.add(flasherLeft);
 
-      return v;
+      const flasherRight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.3, 0.4),
+        new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true })
+      );
+      flasherRight.position.set(0.5, 2.2, 0.5);
+      v.add(flasherRight);
+
+      // Rotating Siren Point Light
+      const sirenLight = new THREE.PointLight(isFire ? 0xff3b30 : 0x007aff, 2.0, 18);
+      sirenLight.position.set(0, 2.8, 0.5);
+      v.add(sirenLight);
+
+      // Headlight Cones
+      const hl1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      hl1.position.set(-0.8, 0.9, isFire ? 2.65 : 2.15);
+      v.add(hl1);
+      const hl2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      hl2.position.set(0.8, 0.9, isFire ? 2.65 : 2.15);
+      v.add(hl2);
+
+      // Wheels
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
+      const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 12);
+      [
+        [-1.2, 0.42, 1.3],
+        [1.2, 0.42, 1.3],
+        [-1.2, 0.42, -1.3],
+        [1.2, 0.42, -1.3],
+      ].forEach(([wx, wy, wz]) => {
+        const w = new THREE.Mesh(wheelGeo, wheelMat);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(wx, wy, wz);
+        v.add(w);
+      });
+
+      return { group: v, flasherLeft, flasherRight, sirenLight };
     };
 
-    // 1. UPDATE EMERGENCY VEHICLES
+    // 1. UPDATE AND INTERPOLATE EMERGENCY UNITS
     const units = worldState.units || {};
+    let fireEngineOnScene = false;
+
     Object.entries(units).forEach(([uid, u]: [string, any]) => {
       const key = u.callsign || uid;
-      let mesh = vehiclesMapRef.current.get(key);
+      let vehRecord = vehiclesMapRef.current.get(key);
 
-      if (!mesh) {
-        mesh = buildVehicleModel(u.unit_type, key);
-        scene.add(mesh);
-        vehiclesMapRef.current.set(key, mesh);
+      if (!vehRecord) {
+        const built = buildVehicleModel(u.unit_type, key, uid);
+        scene.add(built.group);
+        interactiveObjectsRef.current.push(built.group);
+
+        const initTarget = SECTOR_COORDS[u.location] || SECTOR_COORDS["Station_North"];
+        built.group.position.set(initTarget[0], initTarget[1], initTarget[2]);
+
+        vehRecord = {
+          group: built.group,
+          targetPos: new THREE.Vector3(initTarget[0], initTarget[1], initTarget[2]),
+          flasherLeft: built.flasherLeft,
+          flasherRight: built.flasherRight,
+          sirenLight: built.sirenLight
+        };
+        vehiclesMapRef.current.set(key, vehRecord);
       }
 
-      // Position vehicle at its sector or interpolate to target
-      const targetLoc = u.location || "Station_North";
-      const coords = SECTOR_COORDS[targetLoc] || SECTOR_COORDS["Station_North"];
+      // Update unit metadata for the inspector
+      vehRecord.group.userData = {
+        type: 'unit',
+        callsign: key,
+        id: uid,
+        unit_type: u.unit_type,
+        status: u.status,
+        location: u.location,
+        fuel: u.fuel_remaining_minutes,
+        assigned_target: u.assigned_target
+      };
 
-      // Offset slightly to prevent vehicles stacking
-      const offsetIndex = (Object.keys(units).indexOf(uid)) * 2.2;
-      mesh.position.set(coords[0] + offsetIndex, coords[1], coords[2]);
+      // Set target vector for smooth driving interpolation
+      const targetSector = u.assigned_target || u.location || "Station_North";
+      const tCoords = SECTOR_COORDS[targetSector] || SECTOR_COORDS["Station_North"];
+      vehRecord.targetPos.set(tCoords[0], tCoords[1], tCoords[2]);
+
+      // Check if Fire Engine is currently on-scene at Sector 5C
+      if (u.unit_type === "fire_truck" && (u.location === "Sector_5C" || u.assigned_target === "Sector_5C") && u.status !== "available") {
+        fireEngineOnScene = true;
+      }
     });
 
-    // 2. UPDATE INCIDENT HAZARDS (Flames & Smoke Columns)
+    // Toggle water suppression hose stream
+    if (waterSprayRef.current) {
+      waterSprayRef.current.visible = fireEngineOnScene;
+      if (fireEngineOnScene) {
+        waterSprayRef.current.position.set(16, 1.5, -24);
+      }
+    }
+
+    // 2. UPDATE ACTIVE HAZARDS (FLAMES, SMOKE COLUMNS)
     const incidents = worldState.incidents || {};
-    // Remove old incidents that are no longer active
-    incidentsMapRef.current.forEach((grp, incId) => {
+
+    // Remove extinguished incidents
+    incidentsMapRef.current.forEach((val, incId) => {
       if (!incidents[incId] || !incidents[incId].active || incidents[incId].severity === "extinguished") {
-        scene.remove(grp);
+        scene.remove(val.group);
         incidentsMapRef.current.delete(incId);
       }
     });
 
-    // Add or update active incidents
+    // Add or modulate active incidents
     Object.entries(incidents).forEach(([incId, inc]: [string, any]) => {
       if (!inc.active || inc.severity === "extinguished") return;
 
-      if (!incidentsMapRef.current.has(incId)) {
-        const hazardGroup = new THREE.Group();
-        const coords = SECTOR_COORDS[inc.location] || [16, 0, -16];
-        hazardGroup.position.set(coords[0], coords[1], coords[2]);
+      let hazard = incidentsMapRef.current.get(incId);
+      if (!hazard) {
+        const hGroup = new THREE.Group();
+        const coords = SECTOR_COORDS[inc.location] || [26, 0, -24];
+        hGroup.position.set(coords[0], coords[1], coords[2]);
 
-        // Fire Point Light
-        const fireLight = new THREE.PointLight(0xff4500, 3.5, 30);
-        fireLight.position.set(0, 4, 0);
-        hazardGroup.add(fireLight);
+        // Point Light
+        const fireLight = new THREE.PointLight(0xff4500, 3.8, 32);
+        fireLight.position.set(0, 5, 0);
+        hGroup.add(fireLight);
 
-        // Flame Core Mesh
+        // Core Flame Cone
         const flameMesh = new THREE.Mesh(
-          new THREE.ConeGeometry(1.8, 4.5, 8),
-          new THREE.MeshBasicMaterial({ color: 0xff3700 })
+          new THREE.ConeGeometry(2.2, 5.5, 8),
+          new THREE.MeshBasicMaterial({ color: 0xff3b00 })
         );
-        flameMesh.position.set(0, 2.2, 0);
-        hazardGroup.add(flameMesh);
+        flameMesh.position.set(0, 2.75, 0);
+        hGroup.add(flameMesh);
 
-        // Smoke Particles
+        // Smoke Plume
+        const smokeParticles = 28;
         const smokeGeo = new THREE.BufferGeometry();
-        const smokePos = new Float32Array(24 * 3);
-        for (let i = 0; i < 24 * 3; i += 3) {
-          smokePos[i] = (Math.random() - 0.5) * 3;
-          smokePos[i + 1] = 4 + Math.random() * 8;
-          smokePos[i + 2] = (Math.random() - 0.5) * 3;
+        const sPositions = new Float32Array(smokeParticles * 3);
+        for (let i = 0; i < smokeParticles * 3; i += 3) {
+          sPositions[i] = (Math.random() - 0.5) * 4;
+          sPositions[i + 1] = 4 + Math.random() * 10;
+          sPositions[i + 2] = (Math.random() - 0.5) * 4;
         }
-        smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
-        const smokeMat = new THREE.PointsMaterial({
-          color: 0x4f4945,
-          size: 2.5,
-          transparent: true,
-          opacity: 0.65
-        });
-        const smoke = new THREE.Points(smokeGeo, smokeMat);
-        hazardGroup.add(smoke);
+        smokeGeo.setAttribute('position', new THREE.BufferAttribute(sPositions, 3));
+        const smokePoints = new THREE.Points(
+          smokeGeo,
+          new THREE.PointsMaterial({ color: 0x475569, size: 2.8, transparent: true, opacity: 0.65 })
+        );
+        hGroup.add(smokePoints);
 
-        scene.add(hazardGroup);
-        incidentsMapRef.current.set(incId, hazardGroup);
+        scene.add(hGroup);
+        hazard = { group: hGroup, fireLight, flameMesh, smokePoints };
+        incidentsMapRef.current.set(incId, hazard);
       }
     });
 
@@ -369,25 +851,26 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
       const existing = roadblocksMapRef.current.get(roadId);
 
       if (isBlocked && !existing) {
-        const rCoords = ROAD_COORDS[roadId] || [0, 0.5, 0];
+        const rCoords = ROAD_BLOCK_COORDS[roadId] || [0, 0.4, 0];
         const barGroup = new THREE.Group();
         barGroup.position.set(rCoords[0], rCoords[1], rCoords[2]);
 
-        // Barricade board with caution stripes
+        // Barricade board with orange caution stripes
         const barMesh = new THREE.Mesh(
-          new THREE.BoxGeometry(4.5, 1.2, 0.4),
-          new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 })
+          new THREE.BoxGeometry(4.8, 1.2, 0.4),
+          new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.5 })
         );
         barMesh.position.y = 0.6;
         barGroup.add(barMesh);
 
-        // Flashing amber beacon
-        const beacon = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.3, 0.3, 0.5, 8),
-          new THREE.MeshBasicMaterial({ color: 0xff0000 })
-        );
-        beacon.position.y = 1.4;
+        // Warning Beacon Light
+        const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.5, 8), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        beacon.position.y = 1.45;
         barGroup.add(beacon);
+
+        const beaconLight = new THREE.PointLight(0xff0000, 1.5, 8);
+        beaconLight.position.y = 1.6;
+        barGroup.add(beaconLight);
 
         scene.add(barGroup);
         roadblocksMapRef.current.set(roadId, barGroup);
@@ -397,87 +880,144 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
       }
     });
 
-  }, [worldState]);
+  }, [worldState, weatherVisual]);
 
-  // Smooth Orbit Controls
-  const rotateLeft = () => {
-    angleRef.current -= Math.PI / 8;
-    updateCamera();
+  // Smooth Camera Preset Controller
+  const setCameraPreset = (preset: string) => {
+    setActiveCamPreset(preset);
+    if (!cameraRef.current || !controlsRef.current) return;
+    const controls = controlsRef.current;
+
+    switch (preset) {
+      case 'overview':
+        cameraRef.current.position.set(75, 68, 75);
+        controls.target.set(0, 0, 0);
+        break;
+      case 'sector_5c':
+        cameraRef.current.position.set(45, 28, -8);
+        controls.target.set(26, 4, -24);
+        break;
+      case 'sector_6b':
+        cameraRef.current.position.set(45, 30, 45);
+        controls.target.set(28, 6, 26);
+        break;
+      case 'hospital':
+        cameraRef.current.position.set(22, 24, -28);
+        controls.target.set(0, 8, -46);
+        break;
+      case 'topdown':
+        cameraRef.current.position.set(0, 110, 0.01);
+        controls.target.set(0, 0, 0);
+        break;
+    }
   };
 
-  const rotateRight = () => {
-    angleRef.current += Math.PI / 8;
-    updateCamera();
-  };
-
-  const setTilt = (high: boolean) => {
-    if (!cameraRef.current) return;
-    const r = 95;
-    const y = high ? 70 : 38;
-    cameraRef.current.position.set(r * Math.cos(angleRef.current), y, r * Math.sin(angleRef.current));
-    cameraRef.current.lookAt(0, 0, 0);
-  };
-
-  const updateCamera = () => {
-    if (!cameraRef.current) return;
-    const r = 95;
-    const y = cameraRef.current.position.y;
-    cameraRef.current.position.set(r * Math.cos(angleRef.current), y, r * Math.sin(angleRef.current));
-    cameraRef.current.lookAt(0, 0, 0);
-  };
-
-  const activeIncCount = Object.values(worldState?.incidents || {}).filter((i: any) => i.active && i.severity !== "extinguished").length;
+  const activeIncidents = Object.values(worldState?.incidents || {}).filter((i: any) => i.active && i.severity !== "extinguished");
 
   return (
-    <div className="relative w-full h-[470px] rounded-[24px] overflow-hidden select-none bg-[#dce7f3] border-2 border-white shadow-inner">
+    <div className="relative w-full h-[490px] rounded-[24px] overflow-hidden select-none bg-[#dce8f5] border-2 border-white shadow-inner">
+      {/* 3D WebGL Canvas */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Real-time Status Overlay Badges */}
-      <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
-        <div className="bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white text-[11px] font-[800] text-[#2F2940] shadow-sm flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span>
-          <span>SECTOR 5 // LIVE TELEMETRY STREAM</span>
+      {/* Floating Tactical Status Badges */}
+      <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none z-10">
+        <div className="bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white text-[11px] font-[800] text-[#2F2940] shadow-sm flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] animate-pulse"></span>
+          <span>NYC SECTOR 5 & 6 // HIGH-RES 3D COMMAND MESH</span>
         </div>
-        {activeIncCount > 0 ? (
+
+        {activeIncidents.length > 0 ? (
           <div className="bg-[#fee2e2]/95 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[10px] font-[800] text-[#b91c1c] shadow-sm flex items-center gap-1.5 w-fit">
-            <span>🔥</span>
-            <span>{activeIncCount} ACTIVE HAZARDS ENGAGED</span>
+            <Flame size={12} className="animate-bounce" />
+            <span>ACTIVE HAZARD ENGAGED AT SECTOR 5C (FIRE ENGINE ON-SCENE)</span>
           </div>
         ) : (
           <div className="bg-[#ecfdf5]/95 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[10px] font-[800] text-[#047857] shadow-sm flex items-center gap-1.5 w-fit">
             <span>✓</span>
-            <span>ALL SECTORS CONTAINED & SECURED</span>
+            <span>ALL CORRIDORS SECURED & NOMINAL</span>
           </div>
         )}
       </div>
 
-      {/* Camera Position & Orbit Controls */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-white/95 backdrop-blur-md border border-white px-3 py-1.5 rounded-full text-[10px] font-[800] text-[#4A4458] shadow-md">
-        <span className="text-[#8E819E] uppercase mr-1">Camera:</span>
+      {/* Camera View Presets Toolbar */}
+      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-white/95 backdrop-blur-md border border-white p-1 rounded-full text-[10px] font-[800] text-[#4A4458] shadow-md z-10">
         <button
-          onClick={() => setTilt(true)}
-          className="px-2.5 py-1 bg-[#F3EFFC] hover:bg-[#E6DFF5] rounded-full border border-white transition active:scale-95"
+          onClick={() => setCameraPreset('overview')}
+          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'overview' ? 'bg-[#2F2940] text-white shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
         >
-          ▲ HIGH
+          Overview
         </button>
         <button
-          onClick={() => setTilt(false)}
-          className="px-2.5 py-1 bg-[#F3EFFC] hover:bg-[#E6DFF5] rounded-full border border-white transition active:scale-95"
+          onClick={() => setCameraPreset('sector_5c')}
+          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'sector_5c' ? 'bg-[#FFE6A5] text-[#874b0c] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
         >
-          ▼ LOW
+          🔥 Fire 5C
         </button>
         <button
-          onClick={rotateLeft}
-          className="px-2.5 py-1 bg-[#F3EFFC] hover:bg-[#E6DFF5] rounded-full border border-white transition active:scale-95"
+          onClick={() => setCameraPreset('sector_6b')}
+          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'sector_6b' ? 'bg-[#D6C2FF] text-[#4a2d82] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
         >
-          ↺ ROT L
+          🚇 Subway 6B
         </button>
         <button
-          onClick={rotateRight}
-          className="px-2.5 py-1 bg-[#F3EFFC] hover:bg-[#E6DFF5] rounded-full border border-white transition active:scale-95"
+          onClick={() => setCameraPreset('hospital')}
+          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'hospital' ? 'bg-[#B5DEFF] text-[#1b446f] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
         >
-          ↻ ROT R
+          🏥 Hospital H1
         </button>
+        <button
+          onClick={() => setCameraPreset('topdown')}
+          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'topdown' ? 'bg-[#C3FFB5] text-[#2E5A2A] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+        >
+          🗺️ 2D Map
+        </button>
+        <button
+          onClick={() => setWeatherVisual(!weatherVisual)}
+          title="Toggle Weather Rain Precipitation"
+          className="w-7 h-7 rounded-full bg-white hover:bg-[#F3EFFC] flex items-center justify-center border border-white text-[#7B6E96] transition"
+        >
+          {weatherVisual ? <CloudRain size={13} className="text-[#0284c7]" /> : <Sun size={13} className="text-[#f59e0b]" />}
+        </button>
+      </div>
+
+      {/* Tactical Object Inspector Overlay (Triggered by Clicking Any Unit/District) */}
+      {inspectedEntity && (
+        <div className="absolute bottom-4 left-4 max-w-xs w-full bg-white/95 backdrop-blur-md border-2 border-white rounded-[20px] p-3.5 shadow-xl z-20 animate-in fade-in slide-in-from-bottom-2">
+          <div className="flex items-center justify-between pb-2 border-b border-[#EEE8F8] mb-2">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-[800] border border-white"
+                style={{ backgroundColor: inspectedEntity.badgeColor }}
+              >
+                {inspectedEntity.type === 'unit' ? <Truck size={12} /> : inspectedEntity.type === 'hospital' ? <Bed size={12} /> : <Flame size={12} />}
+              </div>
+              <span className="font-[800] text-xs text-[#2F2940] truncate max-w-[150px]">
+                {inspectedEntity.title}
+              </span>
+            </div>
+            <button 
+              onClick={() => setInspectedEntity(null)}
+              className="text-[#9A8EB0] hover:text-[#2F2940] text-xs font-[800]"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-1.5 text-[11px] font-[700]">
+            {inspectedEntity.details.map((d, i) => (
+              <div key={i} className="flex justify-between items-center text-[#4A4458]">
+                <span className="text-[#8E819E]">{d.label}:</span>
+                <span className="font-[800] text-[#244974]">{d.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Orbit Controls Guidance Pill */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[9px] font-[800] text-[#7B6E96] shadow-sm pointer-events-none">
+        <Compass size={11} className="text-[#244974]" />
+        <span>Left-click: Orbit • Right-click: Pan • Scroll: Zoom • Click entity: Inspect</span>
       </div>
     </div>
   );
