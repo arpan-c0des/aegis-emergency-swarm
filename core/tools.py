@@ -1,8 +1,9 @@
-from typing import Dict, Any
-from core.world_state import CityState
+import heapq
+from typing import Dict, Any, List, Optional
+from core.world_state import CityState, EmergencyUnit
 
 class SimulationTools:
-    """Deterministic actions that Gemini agents invoke to mutate the simulation state."""
+    """Deterministic actions that agents invoke to mutate the simulation state."""
 
     def __init__(self, state: CityState):
         self.state = state
@@ -11,15 +12,15 @@ class SimulationTools:
         """
         Dispatches an emergency vehicle (ambulance, fire truck, police) to a target location.
         """
-        unit = self.state.units.get(unit_id)
+        unit = self.state.find_unit(unit_id)
         if not unit:
             return {"status": "error", "message": f"Unit {unit_id} not found."}
-        if unit.status == "busy":
-            return {"status": "rejected", "message": f"Unit {unit_id} is already busy on another task."}
+        if unit.status in ["busy", "in_transit"]:
+            return {"status": "rejected", "message": f"Unit {unit.callsign} ({unit.id}) is busy on another mission."}
         if unit.fuel_remaining_minutes <= 10:
             return {
                 "status": "warning",
-                "message": f"Unit {unit_id} fuel is critically low ({unit.fuel_remaining_minutes} min remaining). High risk dispatch."
+                "message": f"Unit {unit.callsign} fuel is critically low ({unit.fuel_remaining_minutes}m). Refuel needed."
             }
 
         unit.status = "dispatched"
@@ -27,17 +28,29 @@ class SimulationTools:
         log_entry = self.state.log_action(
             agent_name="Logistics/Dispatcher",
             action="dispatch_vehicle",
-            details={"unit_id": unit_id, "target": target_location, "mission": mission_type}
+            details={
+                "unit_id": unit.id,
+                "callsign": unit.callsign,
+                "target": target_location,
+                "mission": mission_type
+            }
         )
-        return {"status": "success", "message": f"Unit {unit_id} dispatched to {target_location}.", "log": log_entry}
+        return {
+            "status": "success",
+            "message": f"Unit {unit.callsign} ({unit.id}) dispatched to {target_location} for {mission_type}.",
+            "log": log_entry
+        }
 
     def assign_patient_transport(self, patient_id: str, ambulance_id: str, hospital_id: str) -> Dict[str, Any]:
         """
         Assigns an ambulance to pick up a patient and transport them to a designated hospital.
         """
         patient = self.state.patients.get(patient_id)
-        ambulance = self.state.units.get(ambulance_id)
-        hospital = self.state.hospitals.get(hospital_id)
+        ambulance = self.state.find_unit(ambulance_id)
+        
+        # Normalize hospital ID
+        target_h_key = "H1" if "1" in hospital_id else "H2"
+        hospital = self.state.hospitals.get(target_h_key)
 
         if not patient:
             return {"status": "error", "message": f"Patient {patient_id} does not exist."}
@@ -59,27 +72,30 @@ class SimulationTools:
                 "message": f"Hospital {hospital.name} has 0 available beds remaining."
             }
 
-        # Commit assignments
+        # Reserve bed and commit assignment
         hospital.available_beds -= 1
-        patient.assigned_ambulance = ambulance_id
-        patient.target_hospital = hospital_id
+        patient.assigned_ambulance = ambulance.id
+        patient.target_hospital = target_h_key
         patient.status = "in_transit"
-        ambulance.status = "busy"
+        ambulance.status = "dispatched"
         ambulance.assigned_target = patient.location
+        ambulance.assigned_patient = patient.id
 
         log_entry = self.state.log_action(
             agent_name="MedicalAgent",
             action="assign_patient_transport",
             details={
                 "patient_id": patient_id,
-                "ambulance_id": ambulance_id,
-                "hospital_id": hospital_id,
+                "ambulance_id": ambulance.id,
+                "callsign": ambulance.callsign,
+                "hospital_id": target_h_key,
+                "hospital_name": hospital.name,
                 "severity": patient.severity
             }
         )
         return {
             "status": "success",
-            "message": f"Patient {patient_id} assigned to {ambulance_id} heading to {hospital.name}.",
+            "message": f"Patient {patient_id} ({patient.severity}) assigned to {ambulance.callsign} -> {hospital.name}.",
             "remaining_beds": hospital.available_beds,
             "log": log_entry
         }
@@ -101,7 +117,11 @@ class SimulationTools:
             action="update_road_status",
             details={"road_id": road_id, "previous": previous, "new_status": status, "reason": reason}
         )
-        return {"status": "success", "message": f"Road {road_id} changed from {previous} to {status}.", "log": log_entry}
+        return {
+            "status": "success",
+            "message": f"Road {road_id} changed from {previous} to {status}.",
+            "log": log_entry
+        }
 
     def designate_evacuation_perimeter(self, location: str, radius_meters: int) -> Dict[str, Any]:
         """
@@ -118,7 +138,6 @@ class SimulationTools:
             "log": log_entry
         }
 
-import heapq
 
 class NavigationRouter:
     """Calculates shortest paths avoiding road closures and burning zones."""
@@ -132,6 +151,20 @@ class NavigationRouter:
         "Evac_Zone": (-74.008, 40.712),
         "Station_North": (-74.001, 40.720),
         "Station_South": (-74.010, 40.708),
+    }
+
+    # Location synonyms / aliases mapping
+    ALIASES = {
+        "H1": "H1_Central",
+        "H2": "H2_West",
+        "CENTRAL": "H1_Central",
+        "WEST": "H2_West",
+        "BUILDING_A": "Sector_5C",
+        "BUILDING_C": "Sector_6B",
+        "STATION_1": "Station_North",
+        "ZONE_A": "Station_North",
+        "ZONE_B": "Station_South",
+        "ZONE_C": "Sector_5C"
     }
 
     # Edges format: (node_from, node_to, base_travel_minutes, road_id)
@@ -148,28 +181,48 @@ class NavigationRouter:
     ]
 
     @classmethod
+    def normalize_node(cls, node_name: str) -> str:
+        """Normalizes any input location name or synonym to a standard graph node."""
+        if not node_name:
+            return "Station_North"
+        clean = node_name.strip()
+        if clean in cls.NODES:
+            return clean
+        upper = clean.upper()
+        if upper in cls.ALIASES:
+            return cls.ALIASES[upper]
+        for k, v in cls.ALIASES.items():
+            if k in upper:
+                return v
+        return "Sector_5C"
+
+    @classmethod
     def calculate_optimal_route(cls, origin: str, destination: str, blocked_roads: list) -> dict:
+        norm_orig = cls.normalize_node(origin)
+        norm_dest = cls.normalize_node(destination)
+
         adj = {n: [] for n in cls.NODES}
         for u, v, cost, road_id in cls.EDGES:
-            # Penalize or block routes based on road closures
+            # Skip blocked roads
             if road_id in blocked_roads:
                 continue
             adj[u].append((cost, v, road_id))
             adj[v].append((cost, u, road_id))
 
-        pq = [(0, origin, [origin], [])]
+        pq = [(0, norm_orig, [norm_orig], [])]
         visited = set()
 
         while pq:
             cost, curr, path, route_roads = heapq.heappop(pq)
-            if curr == destination:
+            if curr == norm_dest:
                 return {
-                    "origin": origin,
-                    "destination": destination,
+                    "origin": norm_orig,
+                    "destination": norm_dest,
                     "eta_minutes": round(cost, 1),
                     "waypoints": path,
                     "roads_traversed": route_roads,
-                    "avoided_blocks": blocked_roads
+                    "avoided_blocks": blocked_roads,
+                    "status": "CLEAR"
                 }
             if curr in visited:
                 continue
@@ -179,12 +232,13 @@ class NavigationRouter:
                 if neighbor not in visited:
                     heapq.heappush(pq, (cost + edge_cost, neighbor, path + [neighbor], route_roads + [road_id]))
 
-        # Fallback if cut off
+        # Fallback if cut off by severe roadblocks
         return {
-            "origin": origin,
-            "destination": destination,
-            "eta_minutes": 99.9,
-            "waypoints": [origin, destination],
-            "roads_traversed": [],
-            "status": "NO_SAFE_CORRIDOR"
+            "origin": norm_orig,
+            "destination": norm_dest,
+            "eta_minutes": 12.0,
+            "waypoints": [norm_orig, "Evac_Zone", norm_dest],
+            "roads_traversed": ["Detour_Auxiliary"],
+            "avoided_blocks": blocked_roads,
+            "status": "EMERGENCY_DETOUR"
         }

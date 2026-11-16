@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { Navbar } from '../components/Navbar';
 import { Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, ShieldAlert, Sparkles } from 'lucide-react';
@@ -8,6 +8,7 @@ export default function FleetPage() {
   const [destination, setDestination] = useState("H1_Central");
   const [routeData, setRouteData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [fleetUnits, setFleetUnits] = useState<any>({});
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -22,6 +23,15 @@ export default function FleetPage() {
     H2_West: { x: 420, y: 330, label: "H2 St. Luke's Med" },
   };
 
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/state`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.units) setFleetUnits(data.units);
+      })
+      .catch((err) => console.error("Could not fetch fleet units", err));
+  }, []);
+
   const requestRoute = async () => {
     setLoading(true);
     try {
@@ -34,22 +44,23 @@ export default function FleetPage() {
       setRouteData(data);
     } catch (e) {
       console.error(e);
-      // Fallback visual simulation data if API server is not running
+      // Fallback visual simulation data
       setRouteData({
         unit_id: selectedUnit,
         fuel_remaining_minutes: 76,
         routing: {
-          origin: selectedUnit.startsWith("AMB") ? "Station_North" : "Station_South",
+          origin: selectedUnit.startsWith("AMB-07") ? "Station_North" : "Station_South",
           destination: destination,
           eta_minutes: 4.8,
           waypoints: [
-            selectedUnit.startsWith("AMB") ? "Station_North" : "Station_South",
+            selectedUnit.startsWith("AMB-07") ? "Station_North" : "Station_South",
             "Sector_5C",
             "Evac_Zone",
             destination
           ],
           roads_traversed: ["Road_A1", "Road_E5", "Road_F6"],
-          avoided_blocks: ["Road_D4", "Road_B2"]
+          avoided_blocks: ["Road_D4", "Road_B2"],
+          status: "EMERGENCY_SAFE_CORRIDOR"
         }
       });
     } finally {
@@ -70,7 +81,7 @@ export default function FleetPage() {
 
   return (
     <div className="min-h-screen p-4 md:p-6 flex flex-col justify-between selection:bg-[#FFB5E8]/40">
-      <Head><title>AEGIS Fleet — Emergency Uber Navigation</title></Head>
+      <Head><title>AEGIS Fleet — Emergency Tactical Navigation</title></Head>
       <Navbar />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -93,10 +104,10 @@ export default function FleetPage() {
                 onChange={(e) => setSelectedUnit(e.target.value)}
                 className="w-full clay-inset p-3 rounded-[18px] text-xs font-[800] text-[#244974] mt-1 outline-none"
               >
-                <option value="AMB-07">AMB-07 (Paramedic Ambulance)</option>
-                <option value="AMB-12">AMB-12 (Critical Trauma Transport)</option>
-                <option value="FIRE-03">FIRE-03 (Pumper Engine)</option>
-                <option value="POL-02">POL-02 (Rapid Interceptor)</option>
+                <option value="AMB-07">AMB-07 (Paramedic Ambulance - Station North)</option>
+                <option value="AMB-12">AMB-12 (Critical Trauma Transport - Station South)</option>
+                <option value="FIRE-03">FIRE-03 (Pumper Engine - Station North)</option>
+                <option value="POL-02">POL-02 (Rapid Interceptor - Station South)</option>
               </select>
             </div>
 
@@ -110,6 +121,7 @@ export default function FleetPage() {
                 <option value="H1_Central">General Trauma Hospital (H1)</option>
                 <option value="H2_West">St. Luke's Community Clinic (H2)</option>
                 <option value="Sector_5C">Incident Site: Building A (Sector 5C)</option>
+                <option value="Sector_6B">Secondary Incident: Subway Concourse (Sector 6B)</option>
                 <option value="Evac_Zone">Evacuation Holding Perimeter (Sector 5)</option>
               </select>
             </div>
@@ -117,7 +129,7 @@ export default function FleetPage() {
             <button 
               onClick={requestRoute}
               disabled={loading}
-              className="w-full clay-button py-3.5 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] flex items-center justify-center gap-2 mt-2"
+              className="w-full clay-button py-3.5 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] flex items-center justify-center gap-2 mt-2 transition active:scale-95"
             >
               <Navigation size={15} />
               <span>{loading ? "Calculating Safest Route..." : "Compute Dynamic Route"}</span>
@@ -130,12 +142,12 @@ export default function FleetPage() {
               <span className="text-[#8E819E]">Fuel Reserves:</span>
               <span className="text-[#2E5A2A] font-[800] flex items-center gap-1">
                 <Fuel size={13} />
-                <span>{routeData?.fuel_remaining_minutes ?? 76} mins left</span>
+                <span>{routeData?.fuel_remaining_minutes ?? 76} mins remaining</span>
               </span>
             </div>
             <div className="flex justify-between items-center text-xs font-[700] mt-2">
               <span className="text-[#8E819E]">Hazard Avoidance:</span>
-              <span className="text-[#874b0c] font-[800]">REROUTE ACTIVE</span>
+              <span className="text-[#874b0c] font-[800]">REAL-TIME ACTIVE</span>
             </div>
           </div>
         </div>
@@ -144,10 +156,10 @@ export default function FleetPage() {
         <div className="lg:col-span-8 clay-card p-5">
           <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-4">
             <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
-              TURN-BY-TURN TACTICAL RECORDER
+              TURN-BY-TURN TACTICAL NAVIGATOR
             </span>
             <span className="px-3 py-1 rounded-full bg-[#C3FFB5] border-2 border-white text-[10px] font-[800] text-[#2E5A2A]">
-              GPS LOCK: NYC SECTOR 5
+              GPS LOCK: NYC SECTOR 5 & 6
             </span>
           </div>
 
@@ -215,7 +227,7 @@ export default function FleetPage() {
                 <div 
                   className="absolute top-[85px] left-[360px] bg-[#dc2626] text-white px-2 py-0.5 rounded-full text-[9px] font-[800] border-2 border-white shadow-md flex items-center gap-1 -translate-x-1/2"
                 >
-                  <span>⊗</span> ROAD BLOCKED
+                  <span>⊗</span> ROAD BLOCKED (ROAD B2)
                 </div>
 
                 {/* Fire Hazard Warning */}
@@ -289,10 +301,10 @@ export default function FleetPage() {
               <div className="clay-card p-4 rounded-[22px] bg-[#FFE8F0] border-2 border-white">
                 <div className="text-xs font-[800] text-[#dc2626] flex items-center gap-1.5 mb-1">
                   <AlertTriangle size={14} />
-                  <span>Bypassed Roadblocks & Structural Fire Lines</span>
+                  <span>Bypassed Roadblocks & Hazard Lines</span>
                 </div>
                 <div className="text-[11px] font-[600] text-[#7A5A6E]">
-                  Rerouted away from: <b className="text-[#874b0c]">Road_B2, Sector 5C</b> (Debris & active fire suppression).
+                  Rerouted away from: <b className="text-[#874b0c]">{routeData.routing.avoided_blocks?.join(", ") || "Active Hazards"}</b>.
                 </div>
               </div>
             </div>

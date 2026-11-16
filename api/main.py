@@ -1,19 +1,23 @@
 import os
 import json
 import asyncio
-from typing import Dict, Any, List
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import Response, FileResponse
+from pydantic import BaseModel
 
-from core.world_state import CityState
-from core.tools import SimulationTools
+from core.world_state import CityState, Incident, Patient
+from core.tools import SimulationTools, NavigationRouter
 from core.agents import SwarmAgents
 from core.orchestrator import SwarmOrchestrator
-from integrations.voice_elevenlabs import DispatchAudioService
+from integrations.voice_elevenlabs import DispatchAudioService, DEFAULT_AUDIO_PATH
 from integrations.warehouse_snowflake import SnowflakeWarehouse
 from integrations.audit_solana import SolanaAuditLedger
 from api.auth import auth_verifier
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 app = FastAPI(
     title="AEGIS - Autonomous Emergency Governance & Intelligence System",
@@ -38,6 +42,15 @@ solana_ledger = SolanaAuditLedger()
 # Connected WebSocket clients for real-time dashboard streaming
 active_connections: List[WebSocket] = []
 
+async def broadcast_message(payload: dict):
+    """Sends real-time updates to all connected browser clients."""
+    msg = json.dumps(payload)
+    for conn in list(active_connections):
+        try:
+            await conn.send_text(msg)
+        except Exception:
+            if conn in active_connections:
+                active_connections.remove(conn)
 
 @app.get("/")
 def read_root():
@@ -48,12 +61,10 @@ def read_root():
         "tick": orchestrator.state.time_step
     }
 
-
 @app.get("/api/state")
 def get_world_state(user: dict = Depends(auth_verifier.verify_token)):
     """Returns the current snapshot of roads, hospitals, units, and patients."""
     return orchestrator.state.export_state_dict()
-
 
 @app.post("/api/simulate/tick")
 async def trigger_simulation_tick(user: dict = Depends(auth_verifier.verify_token)):
@@ -72,22 +83,16 @@ async def trigger_simulation_tick(user: dict = Depends(auth_verifier.verify_toke
     result["solana_audit"] = solana_tx
 
     # 4. Generate dynamic tactical voice alert via ElevenLabs for this specific tick
-    audio_path = voice_service.synthesize_dispatch_call(broadcast_text)
+    audio_path = voice_service.synthesize_dispatch_call(broadcast_text, output_path=DEFAULT_AUDIO_PATH)
     result["audio_available"] = bool(audio_path and os.path.exists(audio_path))
 
     # 5. Broadcast new state over WebSockets to UI
-    payload_to_broadcast = {
+    await broadcast_message({
         "type": "SIMULATION_UPDATE",
         "data": result
-    }
-    for connection in active_connections:
-        try:
-            await connection.send_text(json.dumps(payload_to_broadcast))
-        except Exception:
-            pass
+    })
 
     return result
-
 
 @app.post("/api/reset")
 async def reset_simulation():
@@ -99,10 +104,9 @@ async def reset_simulation():
     fresh_state = orchestrator.state.export_state_dict()
 
     # 2. Safely remove previous audio dispatch file if present
-    audio_file = "dispatch_alert.mp3"
-    if os.path.exists(audio_file):
+    if os.path.exists(DEFAULT_AUDIO_PATH):
         try:
-            os.remove(audio_file)
+            os.remove(DEFAULT_AUDIO_PATH)
         except Exception:
             pass
 
@@ -118,26 +122,19 @@ async def reset_simulation():
             "executed_actions": []
         }
     }
-    
-    for connection in list(active_connections):
-        try:
-            await connection.send_text(json.dumps(reset_payload))
-        except Exception:
-            pass
+    await broadcast_message(reset_payload)
 
     return {
         "status": "success",
         "message": "Simulation reset to Tick 0",
         "state": fresh_state
     }
-from fastapi.responses import Response
 
 @app.get("/api/audio/latest")
 def get_latest_audio():
     """Serves the latest tactical radio broadcast audio file with cache-busting headers."""
-    audio_file = "dispatch_alert.mp3"
-    if os.path.exists(audio_file):
-        with open(audio_file, "rb") as f:
+    if os.path.exists(DEFAULT_AUDIO_PATH):
+        with open(DEFAULT_AUDIO_PATH, "rb") as f:
             audio_bytes = f.read()
         return Response(
             content=audio_bytes,
@@ -148,7 +145,11 @@ def get_latest_audio():
                 "Expires": "0",
             }
         )
-    return {"status": "error", "message": "No audio file generated yet."}
+    return Response(
+        content=json.dumps({"status": "error", "message": "No audio file generated yet."}),
+        status_code=404,
+        media_type="application/json"
+    )
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -165,10 +166,8 @@ async def websocket_endpoint(websocket: WebSocket):
             # Keep socket alive
             await websocket.receive_text()
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
-
-from pydantic import BaseModel
-from typing import Optional
+        if websocket in active_connections:
+            active_connections.remove(websocket)
 
 # Configuration state for Auto vs Manual Injection
 system_config = {
@@ -186,8 +185,8 @@ class ManualInjectPayload(BaseModel):
 class HospitalUpdatePayload(BaseModel):
     hospital_id: str
     available_beds: int
-    trauma_ready: bool
-    generator_status: str
+    trauma_ready: bool = True
+    generator_status: str = "NOMINAL"
 
 class RouteRequest(BaseModel):
     unit_id: str
@@ -205,58 +204,75 @@ def toggle_auto_mode():
 # 1. FLEET NAVIGATION ENDPOINT
 @app.post("/api/fleet/route")
 def get_fleet_route(req: RouteRequest):
-    unit = orchestrator.state.units.get(req.unit_id)
+    unit = orchestrator.state.find_unit(req.unit_id)
     origin = unit.location if unit else "Station_North"
     blocked = [r for r, status in orchestrator.state.roads.items() if status == "blocked"]
-    from core.tools import NavigationRouter
     route_plan = NavigationRouter.calculate_optimal_route(origin, req.destination, blocked)
     return {
-        "unit_id": req.unit_id,
-        "fuel_remaining_minutes": unit.fuel_remaining_minutes if unit else 60,
+        "unit_id": unit.callsign if unit else req.unit_id,
+        "fuel_remaining_minutes": unit.fuel_remaining_minutes if unit else 75,
         "routing": route_plan
     }
 
 # 2. HOSPITAL RECEPTION BED UPDATE ENDPOINT
 @app.post("/api/hospitals/update")
-def update_hospital_beds(payload: HospitalUpdatePayload):
-    if payload.hospital_id in orchestrator.state.hospitals:
-        h = orchestrator.state.hospitals[payload.hospital_id]
+async def update_hospital_beds(payload: HospitalUpdatePayload):
+    key = "H1" if "1" in payload.hospital_id else "H2"
+    if key in orchestrator.state.hospitals:
+        h = orchestrator.state.hospitals[key]
         h.available_beds = payload.available_beds
+        # Broadcast updated state so dashboard and 3D map update in real-time
+        await broadcast_message({
+            "type": "SIMULATION_UPDATE",
+            "data": {
+                "updated_world_state": orchestrator.state.export_state_dict()
+            }
+        })
         return {"status": "success", "hospital": h.__dict__}
     return {"status": "error", "message": "Hospital ID not found"}
 
 # 3. MANUAL DATA INJECTION (TRAINING / DRILL SCENARIOS)
 @app.post("/api/admin/inject-data")
-def inject_custom_data(data: ManualInjectPayload):
+async def inject_custom_data(data: ManualInjectPayload):
     if system_config["auto_mode"]:
         return {"status": "denied", "message": "Disable Auto-Mode before injecting manual scenario data."}
     
     # Inject dynamic hazard
     inc_id = f"INC_{len(orchestrator.state.incidents) + 1:02d}"
-    from core.world_state import Incident, Patient
+    normalized_loc = NavigationRouter.normalize_node(data.location)
     orchestrator.state.incidents[inc_id] = Incident(
         id=inc_id,
         incident_type=data.incident_type,
-        location=data.location,
+        location=normalized_loc,
         severity=data.severity,
-        details=data.details
+        details=data.details,
+        active=True
     )
     
-    if data.block_road:
+    if data.block_road and data.block_road in orchestrator.state.roads:
         orchestrator.state.roads[data.block_road] = "blocked"
 
-    for i in range(data.patient_count):
+    for _ in range(data.patient_count):
         pid = f"P_{len(orchestrator.state.patients) + 1:02d}"
         orchestrator.state.patients[pid] = Patient(
             id=pid,
             severity=data.severity,
-            location=data.location,
+            location=normalized_loc,
             status="waiting"
         )
+
+    # Broadcast to all clients immediately
+    fresh_state = orchestrator.state.export_state_dict()
+    await broadcast_message({
+        "type": "SIMULATION_UPDATE",
+        "data": {
+            "updated_world_state": fresh_state
+        }
+    })
 
     return {
         "status": "injected",
         "incident_id": inc_id,
         "current_incidents": len(orchestrator.state.incidents),
-        "world_state": orchestrator.state.export_state_dict()
+        "world_state": fresh_state
     }

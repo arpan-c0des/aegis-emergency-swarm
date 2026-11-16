@@ -1,9 +1,12 @@
 import os
+from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
 
-load_dotenv()
+ROOT_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT_DIR / ".env")
+DEFAULT_AUDIO_PATH = str(ROOT_DIR / "dispatch_alert.mp3")
 
 class DispatchAudioService:
     """Generates tactical emergency radio voice broadcasts using ElevenLabs."""
@@ -14,7 +17,7 @@ class DispatchAudioService:
         self.voice_id = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
         self.client = ElevenLabs(api_key=self.api_key) if self.api_key else None
 
-    def synthesize_dispatch_call(self, broadcast_text: str, output_path: str = "dispatch_alert.mp3") -> Optional[str]:
+    def synthesize_dispatch_call(self, broadcast_text: str, output_path: str = DEFAULT_AUDIO_PATH) -> Optional[str]:
         """
         Takes urgent tactical command text and saves an MP3 radio broadcast.
         """

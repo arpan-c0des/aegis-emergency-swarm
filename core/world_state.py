@@ -1,6 +1,6 @@
 import json
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional
+from dataclasses import dataclass, asdict, field
+from typing import Dict, List, Optional, Any
 
 @dataclass
 class Hospital:
@@ -13,31 +13,34 @@ class Hospital:
 @dataclass
 class EmergencyUnit:
     id: str
+    callsign: str
     unit_type: str  # "ambulance", "fire_truck", "police_cruiser"
-    location: str   # e.g., "Zone_A", "Station_1"
-    status: str     # "available", "dispatched", "busy"
+    location: str   # e.g., "Station_North", "Sector_5C", "H1_Central"
+    status: str     # "available", "dispatched", "on_scene", "in_transit", "busy"
     fuel_remaining_minutes: int
     assigned_target: Optional[str] = None
+    assigned_patient: Optional[str] = None
 
 @dataclass
 class Patient:
     id: str
     severity: str   # "critical", "serious", "minor"
-    location: str
+    location: str   # e.g., "Sector_5C", "Sector_6B"
     assigned_ambulance: Optional[str] = None
     target_hospital: Optional[str] = None
-    status: str = "waiting"  # "waiting", "in_transit", "admitted"
+    status: str = "waiting"  # "waiting", "picked_up", "in_transit", "admitted"
 
 @dataclass
 class Incident:
     id: str
-    incident_type: str  # "fire", "casualty_cluster", "structural_hazard"
-    location: str
-    severity: str       # "high", "medium", "low"
+    incident_type: str  # "fire", "explosion", "structural_collapse", "flash_flood", "hazmat"
+    location: str       # e.g., "Sector_5C", "Sector_6B"
+    severity: str       # "high", "medium", "contained", "extinguished"
     details: str
+    active: bool = True
 
 class CityState:
-    """Manages the real-time simulation state of the emergency zone."""
+    """Manages the real-time simulation state of the emergency zone with full lifecycle dynamics."""
     
     def __init__(self):
         self.time_step: int = 0
@@ -48,28 +51,61 @@ class CityState:
             "Road_A1": "open",
             "Road_B2": "blocked",
             "Road_C3": "congested",
-            "Road_D4": "open"
+            "Road_D4": "open",
+            "Road_E5": "open",
+            "Road_F6": "open",
+            "Road_G7": "open",
+            "Road_H8": "open",
+            "Road_I9": "open"
         }
         
         # Hospitals with bed capacities and trauma capability
         self.hospitals: Dict[str, Hospital] = {
-            "H1": Hospital(id="H1", name="Central Trauma Hospital", total_beds=10, available_beds=2, trauma_capable=True),
-            "H2": Hospital(id="H2", name="West District Clinic", total_beds=8, available_beds=6, trauma_capable=False)
+            "H1": Hospital(id="H1", name="Central Trauma Hospital (H1)", total_beds=37, available_beds=28, trauma_capable=True),
+            "H2": Hospital(id="H2", name="St. Luke's Community Clinic (H2)", total_beds=29, available_beds=12, trauma_capable=False)
         }
         
-        # Initial fleet of response vehicles
+        # Fleet of response vehicles (accessible by both technical ID and tactical callsign)
         self.units: Dict[str, EmergencyUnit] = {
-            "AMB_01": EmergencyUnit(id="AMB_01", unit_type="ambulance", location="Zone_A", status="available", fuel_remaining_minutes=8),
-            "AMB_02": EmergencyUnit(id="AMB_02", unit_type="ambulance", location="Zone_C", status="available", fuel_remaining_minutes=35),
-            "FIRE_01": EmergencyUnit(id="FIRE_01", unit_type="fire_truck", location="Station_1", status="available", fuel_remaining_minutes=60),
-            "POLICE_01": EmergencyUnit(id="POLICE_01", unit_type="police_cruiser", location="Zone_B", status="available", fuel_remaining_minutes=50)
+            "AMB_01": EmergencyUnit(
+                id="AMB_01",
+                callsign="AMB-07",
+                unit_type="ambulance",
+                location="Station_North",
+                status="available",
+                fuel_remaining_minutes=85
+            ),
+            "AMB_02": EmergencyUnit(
+                id="AMB_02",
+                callsign="AMB-12",
+                unit_type="ambulance",
+                location="Station_South",
+                status="available",
+                fuel_remaining_minutes=72
+            ),
+            "FIRE_01": EmergencyUnit(
+                id="FIRE_01",
+                callsign="FIRE-03",
+                unit_type="fire_truck",
+                location="Station_North",
+                status="available",
+                fuel_remaining_minutes=90
+            ),
+            "POLICE_01": EmergencyUnit(
+                id="POLICE_01",
+                callsign="POL-02",
+                unit_type="police_cruiser",
+                location="Station_South",
+                status="available",
+                fuel_remaining_minutes=78
+            )
         }
         
         # Initial patients requiring triage and dispatch
         self.patients: Dict[str, Patient] = {
-            "P_01": Patient(id="P_01", severity="critical", location="Building_A"),
-            "P_02": Patient(id="P_02", severity="serious", location="Building_A"),
-            "P_03": Patient(id="P_03", severity="minor", location="Building_A")
+            "P_01": Patient(id="P_01", severity="critical", location="Sector_5C"),
+            "P_02": Patient(id="P_02", severity="serious", location="Sector_5C"),
+            "P_03": Patient(id="P_03", severity="minor", location="Sector_5C")
         }
         
         # Active incident queue
@@ -77,14 +113,26 @@ class CityState:
             "INC_01": Incident(
                 id="INC_01",
                 incident_type="fire",
-                location="Building_A",
+                location="Sector_5C",
                 severity="high",
-                details="Active structural fire with multiple trapped casualties"
+                details="Active structural fire with trapped casualties at Sector 5C."
             )
         }
         
         # Audit history of actions and negotiations
         self.audit_log: List[dict] = []
+
+    def find_unit(self, identifier: str) -> Optional[EmergencyUnit]:
+        """Finds unit by either id ('AMB_01') or callsign ('AMB-07')."""
+        clean_id = identifier.replace("-", "_").upper()
+        if clean_id in self.units:
+            return self.units[clean_id]
+        if identifier in self.units:
+            return self.units[identifier]
+        for u in self.units.values():
+            if u.callsign.upper() == identifier.upper():
+                return u
+        return None
 
     def export_state_dict(self) -> dict:
         """Returns the world state as a clean JSON-serializable dictionary."""
@@ -110,29 +158,95 @@ class CityState:
         return entry
 
     def advance_disaster_conditions(self):
-        """Simulates time passing, deteriorating weather, fuel burning, and new emergency incidents."""
-        # Burn fuel for active units
-        for unit_id, unit in self.units.items():
-            if unit.status in ["dispatched", "busy"] and unit.fuel_remaining_minutes > 0:
-                unit.fuel_remaining_minutes = max(0, unit.fuel_remaining_minutes - 4)
+        """
+        Advances the simulation lifecycle:
+        1. Moves vehicles along their routes and advances tasks (on_scene -> transport -> admission -> available).
+        2. Burns fuel and manages refueling.
+        3. Progresses active fire suppression.
+        4. Triggers realistic scenario complications and events.
+        """
+        # 1. Update Unit & Mission Lifecycles
+        for unit_id, unit in list(self.units.items()):
+            # Fuel burn for active or moving units
+            if unit.status in ["dispatched", "busy", "on_scene", "in_transit"]:
+                unit.fuel_remaining_minutes = max(0, unit.fuel_remaining_minutes - 3)
+            
+            # AMBULANCE LIFECYCLE
+            if unit.unit_type == "ambulance":
+                if unit.status == "dispatched" and unit.assigned_target:
+                    # Ambulance arrives at incident site
+                    unit.location = unit.assigned_target
+                    unit.status = "on_scene"
+                    if unit.assigned_patient and unit.assigned_patient in self.patients:
+                        p = self.patients[unit.assigned_patient]
+                        p.status = "in_transit"
+                        # Begin transport to assigned hospital
+                        dest_h = p.target_hospital or "H1"
+                        unit.assigned_target = dest_h
+                        unit.status = "in_transit"
+                
+                elif unit.status == "in_transit" and unit.assigned_target:
+                    # Ambulance arrives at hospital with patient
+                    hospital_key = "H1" if "H1" in unit.assigned_target else "H2"
+                    unit.location = hospital_key
+                    if unit.assigned_patient and unit.assigned_patient in self.patients:
+                        p = self.patients[unit.assigned_patient]
+                        p.status = "admitted"
+                        p.location = hospital_key
+                    # Release unit back to service
+                    unit.status = "available"
+                    unit.assigned_target = None
+                    unit.assigned_patient = None
+                    # Auto-refuel if needed at hospital depot
+                    if unit.fuel_remaining_minutes < 40:
+                        unit.fuel_remaining_minutes = 85
 
-        # Dynamic events based on simulation tick
+            # FIRE TRUCK LIFECYCLE
+            elif unit.unit_type == "fire_truck":
+                if unit.status == "dispatched" and unit.assigned_target:
+                    unit.location = unit.assigned_target
+                    unit.status = "on_scene"
+                elif unit.status == "on_scene":
+                    # Actively suppress fire at current location
+                    for inc in self.incidents.values():
+                        if inc.location == unit.location and inc.active:
+                            if inc.severity == "high":
+                                inc.severity = "medium"
+                            elif inc.severity == "medium":
+                                inc.severity = "contained"
+                            elif inc.severity == "contained":
+                                inc.severity = "extinguished"
+                                inc.active = False
+                                unit.status = "available"
+                                unit.assigned_target = None
+                                # Clear road if previously blocked by this fire
+                                if self.roads.get("Road_B2") == "blocked":
+                                    self.roads["Road_B2"] = "open"
+
+            # POLICE CRUISER LIFECYCLE
+            elif unit.unit_type == "police_cruiser":
+                if unit.status == "dispatched" and unit.assigned_target:
+                    unit.location = unit.assigned_target
+                    unit.status = "on_scene"
+
+        # 2. Dynamic Disaster Progression Based on Tick
         if self.time_step == 2:
             self.incidents["INC_02"] = Incident(
                 id="INC_02",
                 incident_type="explosion",
-                location="Building_C",
+                location="Sector_6B",
                 severity="high",
-                details="Secondary structural explosion reported at Building C. Smoke plume impacting Road C3."
+                details="Secondary gas explosion detected at Sector 6B. Road C3 impassable."
             )
             self.roads["Road_C3"] = "blocked"
-            self.patients["P_04"] = Patient(id="P_04", severity="critical", location="Building_C")
+            self.patients["P_04"] = Patient(id="P_04", severity="critical", location="Sector_6B")
 
         elif self.time_step == 3:
             self.weather = "torrential_flash_flood"
             self.roads["Road_D4"] = "congested"
-            self.patients["P_05"] = Patient(id="P_05", severity="serious", location="Building_C")
+            self.patients["P_05"] = Patient(id="P_05", severity="serious", location="Sector_6B")
 
         elif self.time_step >= 4:
-            # Random emergency complications
-            self.hospitals["H1"].available_beds = max(0, self.hospitals["H1"].available_beds - 1)
+            # Bed status fluctuations as doctors admit and stabilize casualties
+            if self.hospitals["H1"].available_beds > 5:
+                self.hospitals["H1"].available_beds -= 1

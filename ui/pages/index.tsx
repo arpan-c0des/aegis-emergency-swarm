@@ -4,16 +4,18 @@ import { Navbar } from '../components/Navbar';
 import { RealWorld3DMap } from '../components/RealWorld3DMap';
 import { 
   Flame, Stethoscope, AlertTriangle, Radio, 
-  MapPin, Volume2, Shield, Activity, Power, RefreshCw, X, Send, Sparkles, Clock, Check
+  MapPin, Volume2, Shield, Activity, Power, RefreshCw, X, Send, Sparkles, Clock, Check, ExternalLink, Copy
 } from 'lucide-react';
 
 export default function ClaymorphicCommandConsole() {
   const [worldState, setWorldState] = useState<any>(null);
   const [transcript, setTranscript] = useState<any[]>([]);
   const [commandPlan, setCommandPlan] = useState<string>("");
+  const [solanaAudit, setSolanaAudit] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-  const [clock, setClock] = useState<string>("2026-09-25 02:17:34 UTC");
+  const [clock, setClock] = useState<string>("");
+  const [copiedHash, setCopiedHash] = useState<boolean>(false);
 
   // Auto-Mode & Manual Scenario Injection State
   const [autoMode, setAutoMode] = useState<boolean>(true);
@@ -29,6 +31,17 @@ export default function ClaymorphicCommandConsole() {
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8000/ws";
 
+  // Live ticking UTC clock
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setClock(now.toISOString().replace('T', ' ').substring(0, 19) + " UTC");
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/state`)
       .then((res) => res.json())
@@ -42,16 +55,24 @@ export default function ClaymorphicCommandConsole() {
       })
       .catch(() => {});
 
-    const ws = new WebSocket(WS_URL);
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "INITIAL_STATE" || msg.type === "SIMULATION_UPDATE" || msg.type === "RESET_STATE") {
-        setWorldState(msg.data.updated_world_state || msg.data);
-        setTranscript(msg.data.transcript || []);
-        setCommandPlan(msg.data.command_plan || "");
-      }
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(WS_URL);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "INITIAL_STATE" || msg.type === "SIMULATION_UPDATE" || msg.type === "RESET_STATE") {
+          const payload = msg.data.updated_world_state || msg.data;
+          setWorldState(payload);
+          if (msg.data.transcript) setTranscript(msg.data.transcript);
+          if (msg.data.command_plan) setCommandPlan(msg.data.command_plan);
+          if (msg.data.solana_audit) setSolanaAudit(msg.data.solana_audit);
+        }
+      };
+    } catch (_) {}
+
+    return () => {
+      if (ws) ws.close();
     };
-    return () => ws.close();
   }, []);
 
   const toggleAuto = async () => {
@@ -91,6 +112,7 @@ export default function ClaymorphicCommandConsole() {
       setWorldState(data.updated_world_state);
       setTranscript(data.transcript || []);
       setCommandPlan(data.command_plan || "");
+      if (data.solana_audit) setSolanaAudit(data.solana_audit);
     } catch (e) {
       console.error(e);
     } finally {
@@ -105,17 +127,51 @@ export default function ClaymorphicCommandConsole() {
       setWorldState(data.state);
       setTranscript([]);
       setCommandPlan("");
+      setSolanaAudit(null);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fallbackSpeech = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      let textToSpeak = "Attention all units. Incident Commander broadcast: Tactical orders in effect.";
+      if (commandPlan) {
+        if (commandPlan.includes("Radio Broadcast:")) {
+          textToSpeak = commandPlan.split("Radio Broadcast:")[1].trim();
+        } else {
+          textToSpeak = commandPlan.slice(0, 160);
+        }
+      }
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 1.05;
+      utterance.pitch = 0.95;
+      utterance.onend = () => setIsPlayingAudio(false);
+      utterance.onerror = () => setIsPlayingAudio(false);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setIsPlayingAudio(false);
     }
   };
 
   const playVoiceBroadcast = () => {
     setIsPlayingAudio(true);
     const audio = new Audio(`${BACKEND_URL}/api/audio/latest?t=${Date.now()}`);
-    audio.play().catch(() => setIsPlayingAudio(false));
-    audio.onended = () => setIsPlayingAudio(false);
-    audio.onerror = () => setIsPlayingAudio(false);
+    audio.play()
+      .then(() => {
+        audio.onended = () => setIsPlayingAudio(false);
+        audio.onerror = () => fallbackSpeech();
+      })
+      .catch(() => fallbackSpeech());
+  };
+
+  const copySolanaHash = () => {
+    if (solanaAudit?.decision_sha256) {
+      navigator.clipboard.writeText(solanaAudit.decision_sha256);
+      setCopiedHash(true);
+      setTimeout(() => setCopiedHash(false), 2000);
+    }
   };
 
   const getAgentColor = (agent: string) => {
@@ -136,6 +192,9 @@ export default function ClaymorphicCommandConsole() {
         return { bg: "#C3FFB5", text: "#2e5a2a" };
     }
   };
+
+  const activeIncidentsList = Object.values(worldState?.incidents || {}).filter((i: any) => i.active && i.severity !== "extinguished");
+  const unitsList = Object.values(worldState?.units || {});
 
   return (
     <div className="min-h-screen p-3 md:p-5 flex flex-col justify-between relative selection:bg-[#FFB5E8]/40">
@@ -176,9 +235,12 @@ export default function ClaymorphicCommandConsole() {
             <div className="text-2xl font-[800] tracking-[-0.03em] text-[#2F2940] flex items-center gap-1.5">
               <span>AEGIS</span>
               <span className="text-[#A99DC0] font-[500]">—</span>
+              <span className="text-sm font-[800] text-[#7B6E96] bg-[#F3EFFC] px-2.5 py-0.5 rounded-full border border-white">
+                TICK {worldState?.time_step ?? 0}
+              </span>
             </div>
             <div className="text-[11px] font-[700] text-[#8E819E] tracking-wide uppercase">
-              Agentic Emergency Response System
+              Autonomous Multi-Agent Emergency Response
             </div>
           </div>
         </div>
@@ -191,20 +253,24 @@ export default function ClaymorphicCommandConsole() {
           </div>
 
           <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#FFE6A5] border border-white"></span>
-            <span className="text-[11px] font-[700] text-[#3E3650]">THREAT: <b className="text-[#874b0c]">ELEVATED</b></span>
+            <span className={`w-2 h-2 rounded-full border border-white ${activeIncidentsList.length > 0 ? "bg-[#FFE6A5] animate-ping" : "bg-[#C3FFB5]"}`}></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">
+              THREAT: <b className={activeIncidentsList.length > 0 ? "text-[#874b0c]" : "text-[#2E5A2A]"}>
+                {activeIncidentsList.length > 0 ? `${activeIncidentsList.length} HAZARDS` : "SECURED"}
+              </b>
+            </span>
           </div>
 
           <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#B5DEFF] border border-white"></span>
-            <span className="text-[11px] font-[700] text-[#3E3650]">SECURITY: <b className="text-[#244974]">RESTRICTED</b></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">SOLANA DEVNET: <b className="text-[#244974]">VERIFIED</b></span>
           </div>
         </div>
 
         {/* Clock & Action Clay Buttons */}
         <div className="flex items-center gap-3">
-          <div className="clay-inset px-3 py-1.5 rounded-[14px] text-center">
-            <div className="text-[10px] font-[800] text-[#7B6E96]">{clock}</div>
+          <div className="clay-inset px-3.5 py-2 rounded-[14px] text-center">
+            <div className="text-[11px] font-[800] text-[#7B6E96] font-mono">{clock || "2026-11-16 02:17:34 UTC"}</div>
           </div>
 
           <button
@@ -218,21 +284,21 @@ export default function ClaymorphicCommandConsole() {
           <button
             onClick={triggerReplan}
             disabled={isSimulating}
-            className="clay-button px-5 py-2 rounded-full font-[800] text-[12px] bg-[#B5DEFF] text-[#1b446f] flex items-center gap-1.5"
+            className="clay-button px-5 py-2 rounded-full font-[800] text-[12px] bg-[#B5DEFF] text-[#1b446f] flex items-center gap-1.5 transition active:scale-95"
           >
             <Activity size={14} className={isSimulating ? "animate-spin" : ""} />
-            <span>{isSimulating ? "REPLANNING..." : "REPLAN"}</span>
+            <span>{isSimulating ? "SIMULATING..." : "SIMULATE TICK"}</span>
           </button>
 
           <button
             onClick={playVoiceBroadcast}
             disabled={isPlayingAudio}
-            className={`clay-button px-5 py-2 rounded-full font-[800] text-[12px] flex items-center gap-1.5 ${
+            className={`clay-button px-5 py-2 rounded-full font-[800] text-[12px] flex items-center gap-1.5 transition active:scale-95 ${
               isPlayingAudio ? "bg-[#FFB5E8] text-[#7a2a62] animate-pulse" : "bg-[#FFE6A5] text-[#874b0c]"
             }`}
           >
             <Radio size={14} />
-            <span>{isPlayingAudio ? "TRANSMITTING" : "BROADCAST"}</span>
+            <span>{isPlayingAudio ? "TRANSMITTING" : "VOICE DISPATCH"}</span>
           </button>
         </div>
       </header>
@@ -244,13 +310,13 @@ export default function ClaymorphicCommandConsole() {
         <div className="lg:col-span-3 clay-card p-4 flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
-              <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">[ 01 ] SHARED WORLD STATE</span>
+              <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">[ 01 ] TELEMETRY & RESOURCES</span>
               <div className="w-2.5 h-2.5 rounded-full bg-[#C3FFB5] border-2 border-white animate-pulse"></div>
             </div>
 
             {/* Infrastructure */}
             <div className="mb-4">
-              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Infrastructure</span>
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Road Infrastructure</span>
               <div className="clay-inset p-3 rounded-[20px] mt-1.5 flex items-center gap-3">
                 <div 
                   className="w-10 h-10 rounded-[14px] bg-[#B5DEFF] border-[2px] border-white flex items-center justify-center shrink-0"
@@ -260,31 +326,38 @@ export default function ClaymorphicCommandConsole() {
                 </div>
                 <div className="text-xs">
                   <div className="font-[700] text-[#3E3650]">
-                    Roads: 42 segments | <span className="text-[#dc2626]">3 degraded</span>
+                    Roads: {Object.keys(worldState?.roads || {}).length} Sectors | <span className="text-[#dc2626] font-[800]">{Object.values(worldState?.roads || {}).filter(r => r === "blocked").length} Blocked</span>
                   </div>
-                  <div className="text-[11px] font-[800] text-[#2E5A2A] mt-0.5">Status: 92% Operational</div>
+                  <div className="text-[11px] font-[800] text-[#2E5A2A] mt-0.5">
+                    Weather: {worldState?.weather?.replace('_', ' ') || "Moderate"}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Hospitals */}
             <div className="space-y-3 mb-4">
-              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Hospitals</span>
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Trauma & Reception Beds</span>
 
               {/* General Hospital */}
               <div className="clay-card p-3 rounded-[20px] bg-white">
                 <div className="flex justify-between items-center text-xs font-[800] text-[#3E3650] mb-1.5">
                   <div className="flex items-center gap-1.5">
                     <Stethoscope size={14} className="text-[#244974]" />
-                    <span>GENERAL HOSPITAL</span>
+                    <span>CENTRAL TRAUMA (H1)</span>
                   </div>
-                  <span className="text-[#244974]">76%</span>
+                  <span className="text-[#244974]">
+                    {Math.round(((worldState?.hospitals?.H1?.available_beds ?? 28) / (worldState?.hospitals?.H1?.total_beds ?? 37)) * 100)}% Free
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mb-2">
-                  <div className="h-full rounded-full bg-[#B5DEFF] transition-all" style={{ width: '76%' }}></div>
+                  <div 
+                    className="h-full rounded-full bg-[#B5DEFF] transition-all" 
+                    style={{ width: `${Math.round(((worldState?.hospitals?.H1?.available_beds ?? 28) / 37) * 100)}%` }}
+                  ></div>
                 </div>
                 <div className="flex justify-between text-[10px] font-[700] text-[#8E819E]">
-                  <span>Power: <b className="text-[#2E5A2A]">NOMINAL</b></span>
+                  <span>Status: <b className="text-[#2E5A2A]">TRAUMA READY</b></span>
                   <span>Beds: {worldState?.hospitals?.H1?.available_beds ?? 28}/37</span>
                 </div>
               </div>
@@ -294,52 +367,85 @@ export default function ClaymorphicCommandConsole() {
                 <div className="flex justify-between items-center text-xs font-[800] text-[#3E3650] mb-1.5">
                   <div className="flex items-center gap-1.5">
                     <Stethoscope size={14} className="text-[#874b0c]" />
-                    <span>ST. LUKE'S MED</span>
+                    <span>ST. LUKE'S CLINIC (H2)</span>
                   </div>
-                  <span className="text-[#874b0c]">41%</span>
+                  <span className="text-[#874b0c]">
+                    {Math.round(((worldState?.hospitals?.H2?.available_beds ?? 12) / (worldState?.hospitals?.H2?.total_beds ?? 29)) * 100)}% Free
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mb-2">
-                  <div className="h-full rounded-full bg-[#FFE6A5] transition-all" style={{ width: '41%' }}></div>
+                  <div 
+                    className="h-full rounded-full bg-[#FFE6A5] transition-all" 
+                    style={{ width: `${Math.round(((worldState?.hospitals?.H2?.available_beds ?? 12) / 29) * 100)}%` }}
+                  ></div>
                 </div>
                 <div className="flex justify-between text-[10px] font-[700] text-[#8E819E]">
-                  <span>Generator: <b className="text-[#874b0c]">ACTIVE</b></span>
+                  <span>Generator: <b className="text-[#874b0c]">NOMINAL</b></span>
                   <span>Beds: {worldState?.hospitals?.H2?.available_beds ?? 12}/29</span>
                 </div>
               </div>
             </div>
 
-            {/* Fleet Fuel Status */}
+            {/* Fleet Status */}
             <div>
-              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Fleet Fuel Status</span>
+              <span className="text-[10px] font-[800] uppercase tracking-wider text-[#9A8EB0]">Active Fleet Status</span>
               <div className="clay-inset p-3 rounded-[20px] mt-1.5 space-y-2 text-xs font-[700]">
-                <div className="flex justify-between items-center pb-1 border-b border-[#EEE8F8]">
-                  <span>AMB-07 | <b className="text-[#244974]">84%</b></span>
-                  <span className="text-[10px] bg-[#C3FFB5] text-[#2E5A2A] px-2 py-0.5 rounded-full font-[800]">READY</span>
-                </div>
-                <div className="flex justify-between items-center pb-1 border-b border-[#EEE8F8]">
-                  <span>ENG-12 | <b className="text-[#dc2626]">22%</b></span>
-                  <span className="text-[10px] bg-[#FFB5E8] text-[#7a2a62] px-2 py-0.5 rounded-full font-[800]">LOW FUEL</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>FIRE-03 | <b className="text-[#874b0c]">68%</b></span>
-                  <span className="text-[10px] bg-[#FFE6A5] text-[#874b0c] px-2 py-0.5 rounded-full font-[800]">DEPLOYED</span>
-                </div>
+                {unitsList.length > 0 ? (
+                  unitsList.map((u: any, idx) => (
+                    <div key={idx} className="flex justify-between items-center pb-1 border-b border-[#EEE8F8] last:border-b-0">
+                      <span>{u.callsign || u.id} | <b className="text-[#244974]">{u.fuel_remaining_minutes}m</b></span>
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-[800] border border-white uppercase ${
+                        u.status === "available" ? "bg-[#C3FFB5] text-[#2E5A2A]" :
+                        u.status === "dispatched" ? "bg-[#B5DEFF] text-[#1b446f]" :
+                        u.status === "on_scene" ? "bg-[#FFE6A5] text-[#874b0c]" :
+                        "bg-[#FFB5E8] text-[#7a2a62]"
+                      }`}>
+                        {u.status}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-400 text-xs">Fleet loading...</div>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t-2 border-[#EEE8F8] flex justify-between text-[10px] font-[800] text-[#8E819E]">
-            <span>TOTAL: 14 UNITS</span>
-            <span>OFFLINE: 1</span>
-            <span>CHARGING: 2</span>
-          </div>
+          {/* Cryptographic Solana Status Card */}
+          {solanaAudit && (
+            <div className="clay-card p-3 rounded-[20px] bg-gradient-to-br from-white to-[#F0E8FF] border-2 border-white">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-[800] text-[#7B6E96] uppercase flex items-center gap-1">
+                  <Shield size={12} className="text-[#874b0c]" /> Solana Devnet Proof
+                </span>
+                <span className="text-[9px] bg-[#C3FFB5] text-[#2E5A2A] font-[800] px-2 py-0.5 rounded-full">
+                  VERIFIED
+                </span>
+              </div>
+              <div className="text-[11px] font-mono text-[#3E3650] break-all bg-white p-1.5 rounded-[12px] border border-[#EEE8F8] mb-2 flex items-center justify-between">
+                <span>{solanaAudit.decision_sha256?.substring(0, 20)}...</span>
+                <button onClick={copySolanaHash} title="Copy SHA-256 State Hash" className="text-[#7B6E96] hover:text-[#2F2940]">
+                  {copiedHash ? <Check size={12} className="text-[#2E5A2A]" /> : <Copy size={12} />}
+                </button>
+              </div>
+              <a
+                href={solanaAudit.explorer_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] font-[800] text-[#244974] hover:underline flex items-center gap-1"
+              >
+                <span>View On Solana Devnet Explorer</span>
+                <ExternalLink size={11} />
+              </a>
+            </div>
+          )}
         </div>
 
         {/* [02] 3D TACTICAL CITY PERSPECTIVE */}
         <div className="lg:col-span-6 clay-card p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
             <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
-              [ 02 ] 3D TACTICAL CITY PERSPECTIVE — SECTOR 5 & 6
+              [ 02 ] 3D TACTICAL CITY PERSPECTIVE — LIVE INCIDENT MESH
             </span>
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFE6A5] border-2 border-white text-[10px] font-[800] text-[#874b0c]">
               <span className="w-2 h-2 rounded-full bg-[#874b0c] animate-pulse"></span>
@@ -347,7 +453,7 @@ export default function ClaymorphicCommandConsole() {
             </div>
           </div>
 
-          {/* Embedded 3D Map Component */}
+          {/* Embedded 3D Map Component with dynamic worldState */}
           <div className="clay-device p-2 overflow-hidden mb-3">
             <RealWorld3DMap worldState={worldState} />
           </div>
@@ -360,19 +466,19 @@ export default function ClaymorphicCommandConsole() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#FFE6A5] border border-white"></span>
-              <span>FIRE TRUCK</span>
+              <span>FIRE ENGINE</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#D6C2FF] border border-white"></span>
-              <span>POLICE</span>
+              <span>POLICE CRUISER</span>
             </span>
             <span className="flex items-center gap-1">
               <span className="text-[#dc2626] font-[800]">⊗</span>
-              <span>ROAD BLOCKED</span>
+              <span>ROAD BARRICADE</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-[#FFB5E8] border border-white"></span>
-              <span>BURNING</span>
+              <span>ACTIVE HAZARD</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-[#C3FFB5] border border-white"></span>
@@ -386,94 +492,63 @@ export default function ClaymorphicCommandConsole() {
           <div>
             <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-3">
               <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
-                [ 03 ] LIVE AGENT ACTIVITY FEED
+                [ 03 ] LIVE SWARM ACTIVITY FEED
               </span>
               <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#C3FFB5] border-2 border-white text-[10px] font-[800] text-[#2E5A2A]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#2E5A2A] animate-pulse"></span>
-                <span>LIVE</span>
+                <span>GEMINI 2.5 FLASH</span>
               </div>
             </div>
 
             {/* Scrollable Soft Activity Stream */}
             <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
-              {/* Command Action */}
-              <div className="clay-card p-3 rounded-[20px] bg-white">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:31</span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#FFE6A5] text-[#874b0c] text-[10px] font-[800] border border-white">
-                    COMMAND
-                  </span>
+              {/* Command Action Plan Header */}
+              {commandPlan && (
+                <div className="clay-card p-3 rounded-[20px] bg-gradient-to-r from-white to-[#F5EFFF] border-2 border-white shadow-sm">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-[800] text-[#874b0c] uppercase">COMMAND DIRECTIVE</span>
+                    <span className="px-2 py-0.5 rounded-full bg-[#FFE6A5] text-[#874b0c] text-[10px] font-[800] border border-white">
+                      AUTHORITATIVE
+                    </span>
+                  </div>
+                  <div className="text-[12px] font-[600] text-[#3E3650] leading-snug whitespace-pre-line">
+                    {commandPlan}
+                  </div>
                 </div>
-                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
-                  {commandPlan ? commandPlan.substring(0, 110) + "..." : "Replan initiated: Route recalculated for AMB-07 to General Hospital."}
-                </div>
-              </div>
-
-              {/* Medical Feed */}
-              <div className="clay-card p-3 rounded-[20px] bg-white">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:26</span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#B5DEFF] text-[#1b446f] text-[10px] font-[800] border border-white">
-                    MEDICAL
-                  </span>
-                </div>
-                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
-                  AMB-12 enroute to ST. LUKE'S — ETA 3.1min Priority: HIGH
-                </div>
-              </div>
-
-              {/* Fire Feed */}
-              <div className="clay-card p-3 rounded-[20px] bg-white">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:19</span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#FFB5E8] text-[#7a2a62] text-[10px] font-[800] border border-white">
-                    FIRE
-                  </span>
-                </div>
-                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
-                  FIRE-03 engaged at Sector 5C. Water supply connected.
-                </div>
-              </div>
-
-              {/* Police Feed */}
-              <div className="clay-card p-3 rounded-[20px] bg-white">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-[700] text-[#9A8EB0]">02:17:12</span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#D6C2FF] text-[#4a2d82] text-[10px] font-[800] border border-white">
-                    POLICE
-                  </span>
-                </div>
-                <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
-                  POL-02 secured perimeter Sector 6. Roadblock established at 5th & Main.
-                </div>
-              </div>
+              )}
 
               {/* Dynamic Transcript Items from Swarm Deliberation */}
-              {transcript.map((item, idx) => {
-                const color = getAgentColor(item.agent);
-                return (
-                  <div key={idx} className="clay-card p-3 rounded-[20px] bg-white">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-[700] text-[#9A8EB0]">SWARM EVENT</span>
-                      <span 
-                        className="px-2 py-0.5 rounded-full text-[10px] font-[800] border border-white"
-                        style={{ backgroundColor: color.bg, color: color.text }}
-                      >
-                        {item.agent.toUpperCase().replace("AGENT", "")}
-                      </span>
+              {transcript.length > 0 ? (
+                transcript.map((item, idx) => {
+                  const color = getAgentColor(item.agent);
+                  return (
+                    <div key={idx} className="clay-card p-3 rounded-[20px] bg-white">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-[700] text-[#9A8EB0]">TACTICAL ASSESSMENT</span>
+                        <span 
+                          className="px-2 py-0.5 rounded-full text-[10px] font-[800] border border-white"
+                          style={{ backgroundColor: color.bg, color: color.text }}
+                        >
+                          {item.agent.toUpperCase().replace("AGENT", "")}
+                        </span>
+                      </div>
+                      <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
+                        {item.assessment}
+                      </div>
                     </div>
-                    <div className="text-[12px] font-[600] text-[#3E3650] leading-snug">
-                      {item.assessment}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="clay-card p-4 rounded-[20px] bg-white text-center text-[#8E819E] text-xs font-[700]">
+                  Click <b>SIMULATE TICK</b> above to initiate Gemini multi-agent tactical deliberation loop.
+                </div>
+              )}
             </div>
           </div>
 
           <div className="pt-3 border-t-2 border-[#EEE8F8] flex justify-between text-[10px] font-[800] text-[#8E819E]">
-            <span>COMM: GEMINI-SWARM</span>
-            <span>SOLANA: VERIFIED</span>
+            <span>COMM: GEMINI 2.5 FLASH</span>
+            <span>SOLANA: VERIFIED DEVNET</span>
           </div>
         </div>
 
@@ -484,44 +559,52 @@ export default function ClaymorphicCommandConsole() {
         {/* Metric 1 */}
         <div className="clay-inset p-3 rounded-[20px] text-center">
           <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">AVG RESPONSE</div>
-          <div className="text-xl font-[800] text-[#244974] mt-0.5">4.2min</div>
-          <div className="text-[10px] font-[800] text-[#2E5A2A]">▼ +0.8min</div>
+          <div className="text-xl font-[800] text-[#244974] mt-0.5">3.8min</div>
+          <div className="text-[10px] font-[800] text-[#2E5A2A]">▼ OPTIMAL</div>
         </div>
 
         {/* Metric 2 */}
         <div className="clay-inset p-3 rounded-[20px] text-center">
-          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">UTILIZATION</div>
-          <div className="text-xl font-[800] text-[#874b0c] mt-0.5">87%</div>
-          <div className="h-1.5 rounded-full bg-[#E6DFF5] overflow-hidden border border-white mt-1">
-            <div className="h-full rounded-full bg-[#FFE6A5]" style={{ width: '87%' }}></div>
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">FLEET READINESS</div>
+          <div className="text-xl font-[800] text-[#874b0c] mt-0.5">
+            {unitsList.filter((u: any) => u.status === "available").length}/{unitsList.length}
           </div>
+          <div className="text-[10px] font-[700] text-[#8E819E]">Available Units</div>
         </div>
 
         {/* Metric 3 */}
         <div className="clay-inset p-3 rounded-[20px] text-center">
-          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">ACTIVE AGENTS</div>
-          <div className="text-xl font-[800] text-[#2F2940] mt-0.5">22/24</div>
-          <div className="text-[10px] font-[700] text-[#8E819E]">2 Standby</div>
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">ACTIVE CASUALTIES</div>
+          <div className="text-xl font-[800] text-[#2F2940] mt-0.5">
+            {Object.values(worldState?.patients || {}).filter((p: any) => p.status !== "admitted").length}
+          </div>
+          <div className="text-[10px] font-[700] text-[#8E819E]">In Triage Queue</div>
         </div>
 
         {/* Metric 4 */}
         <div className="clay-inset p-3 rounded-[20px] text-center">
-          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">POWER GRID</div>
-          <div className="text-xl font-[800] text-[#2E5A2A] mt-0.5">92%</div>
-          <div className="text-[10px] font-[800] text-[#2E5A2A]">STABLE</div>
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">TRAUMA CAPACITY</div>
+          <div className="text-xl font-[800] text-[#2E5A2A] mt-0.5">
+            {worldState?.hospitals?.H1?.available_beds ?? 28}
+          </div>
+          <div className="text-[10px] font-[800] text-[#2E5A2A]">H1 ICU Free</div>
         </div>
 
         {/* Metric 5 */}
         <div className="clay-inset p-3 rounded-[20px] text-center">
-          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">INCIDENTS</div>
-          <div className="text-xl font-[800] text-[#dc2626] mt-0.5">7 ACTIVE</div>
-          <div className="text-[10px] font-[700] text-[#8E819E]">2 HIGH • 3 MED</div>
+          <div className="text-[10px] font-[800] uppercase text-[#9A8EB0]">ACTIVE INCIDENTS</div>
+          <div className="text-xl font-[800] text-[#dc2626] mt-0.5">
+            {activeIncidentsList.length} ACTIVE
+          </div>
+          <div className="text-[10px] font-[700] text-[#8E819E]">
+            {activeIncidentsList.length > 0 ? (activeIncidentsList[0] as any)?.incident_type : "None"}
+          </div>
         </div>
 
         {/* Interactive Clay Auto/Manual Toggle Switch Unit */}
         <div className="clay-inset p-3 rounded-[20px] flex items-center justify-between col-span-2 md:col-span-1">
           <div>
-            <div className="text-[10px] font-[800] text-[#7B6E96]">LOAD 64% • 12ms</div>
+            <div className="text-[10px] font-[800] text-[#7B6E96]">DRILL MODE</div>
             <div className={`text-[11px] font-[800] uppercase mt-0.5 ${autoMode ? "text-[#2E5A2A]" : "text-[#874b0c]"}`}>
               {autoMode ? "AUTO: ON" : "DRILL: ON"}
             </div>
@@ -577,7 +660,7 @@ export default function ClaymorphicCommandConsole() {
             </div>
 
             <p className="text-[12px] font-[600] text-[#7B6E96] mb-4 leading-relaxed">
-              Auto-mode disabled. Inject custom disaster hazards and casualities to train the multi-agent swarm in real time.
+              Auto-mode disabled. Inject custom disaster hazards and casualties to train the multi-agent swarm in real time.
             </p>
 
             <div className="space-y-3 font-[700] text-xs">
@@ -590,7 +673,7 @@ export default function ClaymorphicCommandConsole() {
                     className="w-full clay-inset p-2.5 rounded-[16px] text-xs font-[700] text-[#3E3650] outline-none"
                   >
                     <option value="structural_collapse">Structural Collapse</option>
-                    <option value="gas_leak_explosion">Gas Line Explosion</option>
+                    <option value="explosion">Gas Line Explosion</option>
                     <option value="flash_flood">Flash Flood Surge</option>
                     <option value="hazardous_spill">Hazmat / Chemical Spill</option>
                   </select>
@@ -605,7 +688,6 @@ export default function ClaymorphicCommandConsole() {
                   >
                     <option value="Sector_5C">Sector 5C (Building A)</option>
                     <option value="Sector_6B">Sector 6B (Subway Concourse)</option>
-                    <option value="Building_C">Building C (Industrial Park)</option>
                     <option value="Evac_Zone">Evacuation Zone Perimeter</option>
                   </select>
                 </div>

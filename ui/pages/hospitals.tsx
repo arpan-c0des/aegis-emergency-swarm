@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { Navbar } from '../components/Navbar';
-import { Hospital, Bed, Activity, CheckCircle } from 'lucide-react';
+import { Hospital, Bed, Activity, CheckCircle, RefreshCw } from 'lucide-react';
 
 export default function HospitalsPage() {
   const [h1Beds, setH1Beds] = useState(28);
   const [h2Beds, setH2Beds] = useState(12);
   const [statusMsg, setStatusMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/state`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.hospitals) {
+          if (data.hospitals.H1) setH1Beds(data.hospitals.H1.available_beds);
+          if (data.hospitals.H2) setH2Beds(data.hospitals.H2.available_beds);
+        }
+      })
+      .catch((err) => console.error("Could not fetch hospital telemetry", err));
+  }, []);
+
   const updateHospital = async (id: string, beds: number) => {
+    setLoading(true);
     try {
       const res = await fetch(`${BACKEND_URL}/api/hospitals/update`, {
         method: "POST",
@@ -23,9 +37,12 @@ export default function HospitalsPage() {
         })
       });
       const data = await res.json();
-      setStatusMsg(`Updated ${id} available beds to ${beds}. Swarm AI will route incoming ambulances accordingly.`);
+      setStatusMsg(`Updated ${id} available beds to ${beds}. Swarm AI and 3D C2 console synchronized in real time.`);
     } catch (e) {
       console.error(e);
+      setStatusMsg(`Capacity local updated to ${beds}.`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,7 +85,7 @@ export default function HospitalsPage() {
               </span>
             </div>
             <p className="text-xs font-[600] text-[#7B6E96] mb-4">
-              Dedicated surgical units for critical explosion and burn casualties.
+              Dedicated surgical units for critical explosion and burn casualties. Priority destination for critical triage.
             </p>
 
             <div className="clay-inset p-3 rounded-[18px] flex items-center gap-3 mb-4">
@@ -86,7 +103,8 @@ export default function HospitalsPage() {
 
             <button 
               onClick={() => updateHospital("H1", h1Beds)}
-              className="w-full clay-button py-3 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] uppercase"
+              disabled={loading}
+              className="w-full clay-button py-3 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] uppercase transition active:scale-95"
             >
               Sync H1 Capacity with AI Swarm
             </button>
@@ -119,7 +137,8 @@ export default function HospitalsPage() {
 
             <button 
               onClick={() => updateHospital("H2", h2Beds)}
-              className="w-full clay-button py-3 rounded-full font-[800] text-xs bg-[#FFE6A5] text-[#874b0c] uppercase"
+              disabled={loading}
+              className="w-full clay-button py-3 rounded-full font-[800] text-xs bg-[#FFE6A5] text-[#874b0c] uppercase transition active:scale-95"
             >
               Sync H2 Capacity with AI Swarm
             </button>

@@ -2,7 +2,7 @@ import json
 import re
 from typing import Dict, Any, List
 from core.world_state import CityState
-from core.tools import SimulationTools
+from core.tools import SimulationTools, NavigationRouter
 from core.agents import SwarmAgents
 
 class SwarmOrchestrator:
@@ -17,7 +17,7 @@ class SwarmOrchestrator:
         """Runs an evolving deliberation, negotiation, and execution cycle."""
         self.state.time_step += 1
         
-        # Advance real-world simulation dynamics (burns fuel, triggers secondary explosions/weather)
+        # 1. Advance real-world simulation dynamics (lifecycle, fuel, fire suppression, admissions)
         self.state.advance_disaster_conditions()
         current_state = self.state.export_state_dict()
         
@@ -27,7 +27,7 @@ class SwarmOrchestrator:
         print(f"🚨 TICK {self.state.time_step} — STARTING SWARM DELIBERATION CYCLE")
         print(f"=======================================================")
 
-        # 1. Specialized Domain Assessments
+        # 2. Specialized Domain Assessments
         med_view = self.agents.run_medical_agent(current_state)
         transcript.append({"agent": "MedicalAgent", "assessment": med_view})
 
@@ -37,19 +37,19 @@ class SwarmOrchestrator:
         police_view = self.agents.run_police_agent(current_state)
         transcript.append({"agent": "PoliceAgent", "assessment": police_view})
 
-        # 2. Logistics Reality Audit
+        # 3. Logistics Reality Audit
         proposals = [med_view, fire_view, police_view]
         logistics_view = self.agents.run_logistics_agent(current_state, proposals)
         transcript.append({"agent": "LogisticsAgent", "assessment": logistics_view})
 
-        # 3. Incident Commander Final Synthesis
+        # 4. Incident Commander Final Synthesis
         command_plan = self.agents.run_command_agent(current_state, transcript)
         transcript.append({"agent": "CommandAgent", "assessment": command_plan})
 
-        # 4. Extract Dynamic Radio Broadcast text for ElevenLabs
+        # 5. Extract Dynamic Radio Broadcast text for ElevenLabs voice dispatch
         broadcast_summary = self._extract_radio_summary(command_plan)
 
-        # 5. Deterministic Tool Execution Loop
+        # 6. Dynamic Tactical Execution based on swarm priorities and active state
         executed_actions = self._apply_dynamic_resolution()
 
         return {
@@ -65,36 +65,78 @@ class SwarmOrchestrator:
         """Extracts a short, punchy 1-2 sentence voice broadcast from the command plan."""
         lines = command_plan.split("\n")
         for line in lines:
-            if "broadcast" in line.lower() or "radio" in line.lower() or "announcement" in line.lower():
-                clean = re.sub(r'[*_#]', '', line).strip()
+            line_lower = line.lower()
+            if "radio broadcast:" in line_lower:
+                clean = line.split(":", 1)[1].strip()
+                clean = re.sub(r'[*_#"]', '', clean).strip()
+                if len(clean) > 15:
+                    return clean
+            elif "broadcast" in line_lower or "radio" in line_lower or "announcement" in line_lower:
+                clean = re.sub(r'[*_#"]', '', line).strip()
                 if len(clean) > 20:
                     return clean
-        return f"Tick {self.state.time_step} tactical order executed. Units proceed according to updated command plan."
+        return f"Tick {self.state.time_step} orders confirmed. All units advance per Incident Action Plan."
 
     def _apply_dynamic_resolution(self) -> List[Dict[str, Any]]:
-        """Applies adaptive actions based on the current tick's state."""
+        """
+        Dynamically executes actions prioritizing active threats and casualties:
+        - Dispatches fire engines to unsuppressed active incidents.
+        - Dispatches ambulances to waiting patients (sorted: critical > serious > minor).
+        - Directs police cruisers to establish cordons around blocked or hazardous areas.
+        """
         actions = []
-        
-        # Dispatch Fire Truck if available
-        if self.state.units["FIRE_01"].status == "available":
-            res = self.tools.dispatch_vehicle("FIRE_01", "Building_A", "structural_fire_suppression")
-            actions.append(res)
+        blocked_roads = [r for r, status in self.state.roads.items() if status == "blocked"]
 
-        # Find waiting patients and assign available ambulances
-        for pid, patient in list(self.state.patients.items()):
-            if patient.status == "waiting":
-                # Look for an ambulance with enough fuel
-                for aid, amb in self.state.units.items():
-                    if amb.unit_type == "ambulance" and amb.status == "available" and amb.fuel_remaining_minutes > 10:
-                        # Choose target hospital
-                        target_h = "H1" if (patient.severity == "critical" and self.state.hospitals["H1"].available_beds > 0) else "H2"
-                        res = self.tools.assign_patient_transport(pid, aid, target_h)
-                        actions.append(res)
-                        break
+        # 1. Fire Suppression Dispatch
+        active_incidents = [inc for inc in self.state.incidents.values() if inc.active and inc.severity != "extinguished"]
+        for inc in active_incidents:
+            # Find available fire truck
+            for uid, unit in self.state.units.items():
+                if unit.unit_type == "fire_truck" and unit.status == "available" and unit.fuel_remaining_minutes > 10:
+                    res = self.tools.dispatch_vehicle(uid, inc.location, f"{inc.incident_type}_suppression")
+                    actions.append(res)
+                    break
 
-        # Block any roads affected by active incidents
-        if "INC_02" in self.state.incidents and self.state.roads.get("Road_C3") != "blocked":
-            res = self.tools.update_road_status("Road_C3", "blocked", "Secondary explosion debris")
-            actions.append(res)
+        # 2. Medical Triage & Patient Transport Dispatch
+        # Sort waiting patients: critical first, then serious, then minor
+        severity_rank = {"critical": 0, "serious": 1, "minor": 2}
+        waiting_patients = [
+            p for p in self.state.patients.values() 
+            if p.status == "waiting"
+        ]
+        waiting_patients.sort(key=lambda p: severity_rank.get(p.severity, 3))
+
+        for patient in waiting_patients:
+            # Find available ambulance
+            for uid, amb in self.state.units.items():
+                if amb.unit_type == "ambulance" and amb.status == "available" and amb.fuel_remaining_minutes > 10:
+                    # Choose target hospital: critical -> H1 (if beds exist), else H2
+                    if patient.severity == "critical" and self.state.hospitals["H1"].available_beds > 0:
+                        target_h = "H1"
+                    elif self.state.hospitals["H2"].available_beds > 0:
+                        target_h = "H2"
+                    else:
+                        target_h = "H1"
+
+                    res = self.tools.assign_patient_transport(patient.id, uid, target_h)
+                    actions.append(res)
+                    break
+
+        # 3. Police Security & Traffic Cordon Dispatch
+        for uid, unit in self.state.units.items():
+            if unit.unit_type == "police_cruiser" and unit.status == "available":
+                # Deploy to protect the highest severity hazard area
+                if active_incidents:
+                    target_zone = active_incidents[0].location
+                    res = self.tools.dispatch_vehicle(uid, target_zone, "perimeter_security_cordon")
+                    actions.append(res)
+                break
+
+        # 4. Perimeter Designation for any uncordoned high-severity fire
+        for inc in active_incidents:
+            if inc.severity == "high":
+                res = self.tools.designate_evacuation_perimeter(inc.location, 300)
+                actions.append(res)
+                break
 
         return actions
