@@ -1,35 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { Navbar } from '../components/Navbar';
-import { Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, ShieldAlert, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { 
+  Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, 
+  ShieldAlert, Sparkles, Shield, Clock, Activity, Check, ExternalLink, Radio, CloudSun
+} from 'lucide-react';
 
 export default function FleetPage() {
+  const router = useRouter();
   const [selectedUnit, setSelectedUnit] = useState("AMB-07");
   const [destination, setDestination] = useState("H1_Central");
   const [routeData, setRouteData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [fleetUnits, setFleetUnits] = useState<any>({});
+  const [clock, setClock] = useState("");
+  const [backendOnline, setBackendOnline] = useState(true);
 
   const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
 
-  // Coordinates on the tactical SVG canvas for Manhattan nodes
+  // Coordinates on the tactical SVG canvas for city nodes
   const nodeCoordinates: Record<string, { x: number; y: number; label: string }> = {
-    Station_North: { x: 80, y: 70, label: "Station North" },
-    Station_South: { x: 120, y: 340, label: "Station South" },
-    Sector_5C: { x: 260, y: 100, label: "Sector 5C (Fire Zone)" },
-    Sector_6B: { x: 440, y: 160, label: "Sector 6B (Subway)" },
-    Evac_Zone: { x: 280, y: 280, label: "Evacuation Zone" },
-    H1_Central: { x: 500, y: 80, label: "H1 Central Hospital" },
-    H2_West: { x: 420, y: 330, label: "H2 St. Luke's Med" },
+    Station_North: { x: 90, y: 75, label: "Station North" },
+    Station_South: { x: 130, y: 340, label: "Station South" },
+    Sector_5C: { x: 270, y: 110, label: "Sector 5C (Industrial)" },
+    Sector_6B: { x: 450, y: 160, label: "Sector 6B (Subway)" },
+    Evac_Zone: { x: 290, y: 280, label: "Evacuation Zone" },
+    H1_Central: { x: 510, y: 85, label: "H1 Central Hospital" },
+    H2_West: { x: 430, y: 330, label: "H2 St. Luke's Med" },
   };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setClock(new Date().toLocaleTimeString("en-GB"));
+    }, 1000);
+    setClock(new Date().toLocaleTimeString("en-GB"));
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/state`)
       .then((res) => res.json())
       .then((data) => {
         if (data.units) setFleetUnits(data.units);
+        setBackendOnline(true);
       })
-      .catch((err) => console.error("Could not fetch fleet units", err));
+      .catch(() => setBackendOnline(false));
+
+    // Initial default route calculation
+    requestRoute();
   }, []);
 
   const requestRoute = async () => {
@@ -43,7 +62,6 @@ export default function FleetPage() {
       const data = await res.json();
       setRouteData(data);
     } catch (e) {
-      console.error(e);
       // Fallback visual simulation data
       setRouteData({
         unit_id: selectedUnit,
@@ -68,7 +86,6 @@ export default function FleetPage() {
     }
   };
 
-  // Convert waypoints array into an SVG path string
   const getRouteSvgPath = () => {
     if (!routeData?.routing?.waypoints || routeData.routing.waypoints.length < 2) return "";
     return routeData.routing.waypoints
@@ -80,29 +97,84 @@ export default function FleetPage() {
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-6 flex flex-col justify-between selection:bg-[#FFB5E8]/40">
-      <Head><title>AEGIS Fleet — Emergency Tactical Navigation</title></Head>
-      <Navbar />
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col justify-between selection:bg-[#F59E0B]/30">
+      <Head>
+        <title>AEGIS Fleet — Emergency Tactical Uber & Navigation</title>
+        <meta name="description" content="AEGIS Autonomous Fleet Dispatch & Safe Corridor Tactical Navigation" />
+      </Head>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Navigation Selector Panel */}
-        <div className="lg:col-span-4 clay-card p-5">
-          <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-4">
-            <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
-              DRIVER TACTICAL DISPATCH UNIT
-            </span>
-            <div className="w-8 h-8 rounded-full bg-[#B5DEFF] border-2 border-white flex items-center justify-center">
-              <Truck size={16} className="text-[#244974]" />
-            </div>
+      {/* Top Header */}
+      <header className="relative h-14 shrink-0 border-b border-[#27272A] bg-[#0D0D10]/95 flex items-center justify-between px-3 sm:px-5 z-40">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-[#3B82F6] text-white shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+            <Truck size={18} strokeWidth={2.4} />
           </div>
+          <div className="leading-none">
+            <div className="font-bold tracking-[0.18em] text-[16px] sm:text-[17px]">AEGIS FLEET</div>
+            <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap">Tactical Dispatch • Emergency Uber</div>
+          </div>
+        </div>
 
-          <div className="space-y-4 font-[700] text-xs">
+        {/* Route Navigation Tabs */}
+        <div className="flex items-center gap-1.5 font-mono">
+          <Link 
+            href="/"
+            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+          >
+            [01] C2 Swarm
+          </Link>
+          <Link 
+            href="/fleet"
+            className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-[#3B82F6] text-white shadow-sm"
+          >
+            [02] Fleet Uber
+          </Link>
+          <Link 
+            href="/hospitals"
+            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+          >
+            [03] Bed Intake
+          </Link>
+        </div>
+
+        {/* Clock & Status */}
+        <div className="hidden sm:flex items-center gap-2">
+          <div className="text-right leading-none pr-1">
+            <div className="mono text-[13px] font-semibold">{clock || "14:35:12"}</div>
+            <div className="text-[9px] text-[#71717A] mt-0.5">LOCAL • SYNCED</div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 px-2.5 py-1 text-[10px] font-bold">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] live-dot" />
+            FLEET ONLINE
+          </span>
+        </div>
+      </header>
+
+      {/* Main Content Workspace */}
+      <main className="flex-1 p-3 sm:p-5 max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          
+          {/* Left Column: Navigation Selector Panel (4 cols) */}
+          <div className="lg:col-span-4 rounded-2xl border border-[#27272A] bg-[#131316] p-4 sm:p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">DRIVER TACTICAL DISPATCH</p>
+                <h2 className="text-[14px] font-bold text-white mt-0.5">Emergency Routing Engine</h2>
+              </div>
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#3B82F6]/15 text-[#3B82F6]">
+                <Navigation size={16} />
+              </span>
+            </div>
+
+            {/* Select Unit */}
             <div>
-              <label className="text-[10px] uppercase font-[800] text-[#9A8EB0]">Select Vehicle Unit</label>
+              <label className="text-[10px] uppercase font-bold text-[#A1A1AA] block mb-1">
+                Select Responding Vehicle
+              </label>
               <select 
                 value={selectedUnit} 
                 onChange={(e) => setSelectedUnit(e.target.value)}
-                className="w-full clay-inset p-3 rounded-[18px] text-xs font-[800] text-[#244974] mt-1 outline-none"
+                className="w-full rounded-xl bg-[#17171B] border border-[#27272A] p-2.5 text-[12px] font-semibold text-white outline-none focus:border-[#3B82F6] transition"
               >
                 <option value="AMB-07">AMB-07 (Paramedic Ambulance - Station North)</option>
                 <option value="AMB-12">AMB-12 (Critical Trauma Transport - Station South)</option>
@@ -111,12 +183,15 @@ export default function FleetPage() {
               </select>
             </div>
 
+            {/* Select Destination */}
             <div>
-              <label className="text-[10px] uppercase font-[800] text-[#9A8EB0]">Target Emergency Destination</label>
+              <label className="text-[10px] uppercase font-bold text-[#A1A1AA] block mb-1">
+                Target Emergency Destination
+              </label>
               <select 
                 value={destination} 
                 onChange={(e) => setDestination(e.target.value)}
-                className="w-full clay-inset p-3 rounded-[18px] text-xs font-[800] text-[#874b0c] mt-1 outline-none"
+                className="w-full rounded-xl bg-[#17171B] border border-[#27272A] p-2.5 text-[12px] font-semibold text-[#F59E0B] outline-none focus:border-[#F59E0B] transition"
               >
                 <option value="H1_Central">General Trauma Hospital (H1)</option>
                 <option value="H2_West">St. Luke's Community Clinic (H2)</option>
@@ -126,196 +201,198 @@ export default function FleetPage() {
               </select>
             </div>
 
+            {/* Compute Route Button */}
             <button 
               onClick={requestRoute}
               disabled={loading}
-              className="w-full clay-button py-3.5 rounded-full font-[800] text-xs bg-[#B5DEFF] text-[#1b446f] flex items-center justify-center gap-2 mt-2 transition active:scale-95"
+              className="w-full rounded-xl py-3 font-bold text-xs bg-[#3B82F6] text-white flex items-center justify-center gap-2 transition hover:bg-[#2563EB] active:scale-95 shadow-md disabled:opacity-50"
             >
-              <Navigation size={15} />
-              <span>{loading ? "Calculating Safest Route..." : "Compute Dynamic Route"}</span>
+              <Navigation size={14} />
+              <span>{loading ? "Calculating Safest Corridor…" : "COMPUTE TACTICAL ROUTE"}</span>
             </button>
-          </div>
 
-          {/* Unit Telemetry Box */}
-          <div className="clay-inset p-4 rounded-[22px] mt-5">
-            <div className="flex justify-between items-center text-xs font-[700]">
-              <span className="text-[#8E819E]">Fuel Reserves:</span>
-              <span className="text-[#2E5A2A] font-[800] flex items-center gap-1">
-                <Fuel size={13} />
-                <span>{routeData?.fuel_remaining_minutes ?? 76} mins remaining</span>
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-xs font-[700] mt-2">
-              <span className="text-[#8E819E]">Hazard Avoidance:</span>
-              <span className="text-[#874b0c] font-[800]">REAL-TIME ACTIVE</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic Route Waypoints, Navigation Map & Guidance */}
-        <div className="lg:col-span-8 clay-card p-5">
-          <div className="flex items-center justify-between pb-3 border-b-2 border-[#EEE8F8] mb-4">
-            <span className="font-[800] text-[13px] text-[#5A4E75] tracking-[0.08em]">
-              TURN-BY-TURN TACTICAL NAVIGATOR
-            </span>
-            <span className="px-3 py-1 rounded-full bg-[#C3FFB5] border-2 border-white text-[10px] font-[800] text-[#2E5A2A]">
-              GPS LOCK: NYC SECTOR 5 & 6
-            </span>
-          </div>
-
-          {routeData ? (
-            <div className="space-y-4">
-              {/* ETA Banner */}
-              <div className="clay-card p-4 rounded-[22px] bg-gradient-to-r from-white to-[#F0E8FF] flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase font-[800] text-[#9A8EB0]">Estimated Travel Time</div>
-                  <div className="text-3xl font-[800] text-[#244974]">{routeData.routing.eta_minutes} MINUTES</div>
-                </div>
-                <span className="px-3 py-1.5 rounded-full text-[10px] font-[800] bg-[#C3FFB5] text-[#2E5A2A] border-2 border-white">
-                  SAFE CORRIDOR CLEARED
+            {/* Unit Telemetry Card */}
+            <div className="rounded-xl border border-[#27272A] bg-[#17171B] p-3 space-y-2">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[#A1A1AA]">Fuel Reserve Telemetry:</span>
+                <span className="mono text-[#10B981] font-bold flex items-center gap-1">
+                  <Fuel size={12} />
+                  <span>{routeData?.fuel_remaining_minutes ?? 76} mins remaining</span>
                 </span>
               </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[#A1A1AA]">Hazard Avoidance:</span>
+                <span className="mono text-[#F59E0B] font-bold">REAL-TIME ACTIVE</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[#A1A1AA]">Swarm Sync:</span>
+                <span className="mono text-[#3B82F6] font-bold">GEMINI 2.5 FLASH</span>
+              </div>
+            </div>
+          </div>
 
-              {/* LIVE TACTICAL NAVIGATION MAP CANVAS */}
-              <div className="relative w-full h-[280px] clay-inset rounded-[24px] overflow-hidden border-2 border-white">
-                {/* Street Grid Backdrop */}
-                <div 
-                  className="absolute inset-0 opacity-40"
-                  style={{
-                    backgroundImage: 'linear-gradient(to right, #D6C2FF 1.5px, transparent 1.5px), linear-gradient(to bottom, #D6C2FF 1.5px, transparent 1.5px)',
-                    backgroundSize: '36px 36px'
-                  }}
-                />
+          {/* Right Column: Turn-by-Turn Tactical Navigator (8 cols) */}
+          <div className="lg:col-span-8 rounded-2xl border border-[#27272A] bg-[#131316] p-4 sm:p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">TURN-BY-TURN TACTICAL NAVIGATOR</p>
+                <h2 className="text-[14px] font-bold text-white mt-0.5">Live Emergency Corridor Guidance</h2>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 text-[10px] font-bold">
+                GPS LOCK: SECTOR 5 & 6
+              </span>
+            </div>
 
-                {/* SVG Route Lines and Nodes */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                  {/* Secondary/Inactive City Arteries */}
-                  <line x1="80" y1="70" x2="260" y2="100" stroke="#E6DFF5" strokeWidth="4" />
-                  <line x1="260" y1="100" x2="500" y2="80" stroke="#E6DFF5" strokeWidth="4" />
-                  <line x1="260" y1="100" x2="440" y2="160" stroke="#E6DFF5" strokeWidth="4" />
-                  <line x1="440" y1="160" x2="280" y2="280" stroke="#E6DFF5" strokeWidth="4" />
-                  <line x1="280" y1="280" x2="420" y2="330" stroke="#E6DFF5" strokeWidth="4" />
-                  <line x1="120" y1="340" x2="280" y2="280" stroke="#E6DFF5" strokeWidth="4" />
-
-                  {/* Active Calculated Route Line with Glow */}
-                  {getRouteSvgPath() && (
-                    <>
-                      <path
-                        d={getRouteSvgPath()}
-                        fill="none"
-                        stroke="#B5DEFF"
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.8"
-                      />
-                      <path
-                        d={getRouteSvgPath()}
-                        fill="none"
-                        stroke="#0284c7"
-                        strokeWidth="4"
-                        strokeDasharray="8 6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="animate-pulse"
-                      />
-                    </>
-                  )}
-                </svg>
-
-                {/* Roadblocks Overlay */}
-                <div 
-                  className="absolute top-[85px] left-[360px] bg-[#dc2626] text-white px-2 py-0.5 rounded-full text-[9px] font-[800] border-2 border-white shadow-md flex items-center gap-1 -translate-x-1/2"
-                >
-                  <span>⊗</span> ROAD BLOCKED (ROAD B2)
+            {routeData ? (
+              <div className="space-y-4">
+                {/* ETA Banner */}
+                <div className="rounded-xl border border-[#27272A] bg-[#17171B] p-3.5 flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-[#71717A] tracking-wider block">Estimated Travel Time</span>
+                    <span className="mono text-2xl font-bold text-white">{routeData.routing.eta_minutes} MINUTES</span>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30">
+                    SAFE CORRIDOR CLEARED
+                  </span>
                 </div>
 
-                {/* Fire Hazard Warning */}
-                <div 
-                  className="absolute top-[50px] left-[260px] bg-[#FFE6A5] text-[#874b0c] px-2 py-0.5 rounded-full text-[9px] font-[800] border border-white shadow-sm flex items-center gap-1 -translate-x-1/2"
-                >
-                  <AlertTriangle size={11} className="text-[#dc2626]" /> SECTOR 5C FIRE
-                </div>
+                {/* Live Tactical SVG Navigation Map Canvas */}
+                <div className="relative w-full h-[280px] rounded-2xl border border-[#27272A] bg-[#0B0B0E] overflow-hidden">
+                  {/* Tactical Grid Background */}
+                  <div className="tactical-grid absolute inset-0 opacity-60" />
 
-                {/* Map Waypoint Pins */}
-                {Object.entries(nodeCoordinates).map(([key, node]) => {
-                  const isOrigin = routeData?.routing?.waypoints?.[0] === key;
-                  const isDest = routeData?.routing?.waypoints?.slice(-1)[0] === key;
-                  const isTraversed = routeData?.routing?.waypoints?.includes(key);
+                  {/* SVG Route Lines and Nodes */}
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                    {/* Secondary City Arteries */}
+                    <line x1="90" y1="75" x2="270" y2="110" stroke="#27272A" strokeWidth="3" />
+                    <line x1="270" y1="110" x2="510" y2="85" stroke="#27272A" strokeWidth="3" />
+                    <line x1="270" y1="110" x2="450" y2="160" stroke="#27272A" strokeWidth="3" />
+                    <line x1="450" y1="160" x2="290" y2="280" stroke="#27272A" strokeWidth="3" />
+                    <line x1="290" y1="280" x2="430" y2="330" stroke="#27272A" strokeWidth="3" />
+                    <line x1="130" y1="340" x2="290" y2="280" stroke="#27272A" strokeWidth="3" />
 
-                  return (
-                    <div
-                      key={key}
-                      className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-110"
-                      style={{ left: node.x, top: node.y }}
-                    >
-                      <div 
-                        className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-[800] shadow-sm ${
-                          isOrigin 
-                            ? "bg-[#B5DEFF] text-[#1b446f]" 
-                            : isDest 
-                            ? "bg-[#C3FFB5] text-[#2E5A2A] animate-bounce" 
-                            : isTraversed 
-                            ? "bg-[#D6C2FF] text-[#4a2d82]" 
-                            : "bg-white text-[#9A8EB0]"
-                        }`}
+                    {/* Active Calculated Route Line with Glow */}
+                    {getRouteSvgPath() && (
+                      <>
+                        <path 
+                          d={getRouteSvgPath()} 
+                          fill="none" 
+                          stroke="rgba(59, 130, 246, 0.4)" 
+                          strokeWidth="8" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                        />
+                        <path 
+                          d={getRouteSvgPath()} 
+                          fill="none" 
+                          stroke="#3B82F6" 
+                          strokeWidth="3.5" 
+                          strokeDasharray="8 6" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          className="animate-pulse" 
+                        />
+                      </>
+                    )}
+                  </svg>
+
+                  {/* Roadblocks Overlay */}
+                  <div className="absolute top-[80px] left-[370px] bg-[#EF4444] text-white px-2 py-0.5 rounded-full text-[9px] font-bold shadow-md flex items-center gap-1 -translate-x-1/2">
+                    <span>⊗</span> ROAD BLOCKED (ROAD B2)
+                  </div>
+
+                  {/* Fire Hazard Warning */}
+                  <div className="absolute top-[48px] left-[270px] bg-[#F59E0B] text-black px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm flex items-center gap-1 -translate-x-1/2">
+                    <AlertTriangle size={11} className="text-black" /> SECTOR 5C FIRE
+                  </div>
+
+                  {/* Map Waypoint Pins */}
+                  {Object.entries(nodeCoordinates).map(([key, node]) => {
+                    const isOrigin = routeData?.routing?.waypoints?.[0] === key;
+                    const isDest = routeData?.routing?.waypoints?.slice(-1)[0] === key;
+                    const isTraversed = routeData?.routing?.waypoints?.includes(key);
+
+                    return (
+                      <div
+                        key={key}
+                        className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-110"
+                        style={{ left: node.x, top: node.y }}
                       >
-                        {isOrigin ? "🚑" : isDest ? "🎯" : <MapPin size={12} />}
+                        <div 
+                          className={`w-7 h-7 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-bold shadow-sm ${
+                            isOrigin 
+                              ? "bg-[#3B82F6] text-white" 
+                              : isDest 
+                              ? "bg-[#10B981] text-white animate-bounce" 
+                              : isTraversed 
+                              ? "bg-[#8B5CF6] text-white" 
+                              : "bg-[#17171B] text-[#A1A1AA] border-[#27272A]"
+                          }`}
+                        >
+                          {isOrigin ? "🚑" : isDest ? "🎯" : <MapPin size={12} />}
+                        </div>
+                        <span className="text-[9px] font-bold text-[#D4D4D8] bg-[#131316]/90 px-1.5 py-0.5 rounded border border-[#27272A] shadow-sm mt-0.5 whitespace-nowrap">
+                          {node.label}
+                        </span>
                       </div>
-                      <span className="text-[9px] font-[800] text-[#4A4458] bg-white/90 px-1.5 py-0.5 rounded-full border border-white shadow-sm mt-0.5 whitespace-nowrap">
-                        {node.label}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
 
-                {/* Map Mini Legend */}
-                <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-white/95 px-3 py-1 rounded-full border border-white text-[9px] font-[800] text-[#5A4E75] shadow-sm">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-1 bg-[#0284c7] rounded-full"></span> Active Corridor
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-[#dc2626]"></span> Road Block
-                  </span>
+                  {/* Map Mini Legend */}
+                  <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[#131316]/90 px-2.5 py-1 rounded-full border border-[#27272A] text-[9px] font-semibold text-[#A1A1AA] backdrop-blur">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-1 bg-[#3B82F6] rounded-full" /> Active Corridor
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-[#EF4444]" /> Road Block
+                    </span>
+                  </div>
+                </div>
+
+                {/* Waypoints Journey */}
+                <div className="rounded-xl border border-[#27272A] bg-[#17171B] p-3.5">
+                  <div className="text-[10px] uppercase text-[#71717A] mb-2.5 font-bold">Safe Route Waypoint Corridor</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {routeData.routing.waypoints.map((point: string, idx: number) => (
+                      <React.Fragment key={idx}>
+                        <span className="px-3 py-1 rounded-full bg-[#131316] border border-[#27272A] text-white font-mono text-xs">
+                          {point}
+                        </span>
+                        {idx < routeData.routing.waypoints.length - 1 && (
+                          <ArrowRight size={13} className="text-[#71717A]" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Hazards Bypassed Card */}
+                <div className="rounded-xl border border-[#EF4444]/30 bg-[#EF4444]/10 p-3">
+                  <div className="text-xs font-bold text-[#EF4444] flex items-center gap-1.5 mb-1">
+                    <AlertTriangle size={14} />
+                    <span>Bypassed Roadblocks & Hazard Lines</span>
+                  </div>
+                  <p className="text-[11px] text-[#A1A1AA]">
+                    Rerouted away from: <b className="text-[#F59E0B] font-mono">{routeData.routing.avoided_blocks?.join(", ") || "Active Hazards"}</b>. Safe corridor guaranteed.
+                  </p>
                 </div>
               </div>
-
-              {/* Waypoints Journey */}
-              <div className="clay-inset p-4 rounded-[22px]">
-                <div className="text-[10px] uppercase text-[#9A8EB0] mb-3 font-[800]">Safe Route Waypoint Corridor</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {routeData.routing.waypoints.map((point: string, idx: number) => (
-                    <React.Fragment key={idx}>
-                      <span className="px-3.5 py-1.5 rounded-full bg-white border-2 border-white text-[#244974] font-[800] text-xs shadow-sm">
-                        {point}
-                      </span>
-                      {idx < routeData.routing.waypoints.length - 1 && (
-                        <ArrowRight size={14} className="text-[#A99DC0]" />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center text-[#71717A] text-xs">
+                <Navigation size={36} className="text-[#3B82F6] mb-2 animate-bounce" />
+                <span>Select vehicle and target destination to compute route avoiding active hazards.</span>
               </div>
-
-              {/* Hazards Bypassed */}
-              <div className="clay-card p-4 rounded-[22px] bg-[#FFE8F0] border-2 border-white">
-                <div className="text-xs font-[800] text-[#dc2626] flex items-center gap-1.5 mb-1">
-                  <AlertTriangle size={14} />
-                  <span>Bypassed Roadblocks & Hazard Lines</span>
-                </div>
-                <div className="text-[11px] font-[600] text-[#7A5A6E]">
-                  Rerouted away from: <b className="text-[#874b0c]">{routeData.routing.avoided_blocks?.join(", ") || "Active Hazards"}</b>.
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-[#9A8EB0] text-xs font-[700]">
-              <Navigation size={36} className="text-[#D6C2FF] mb-2 animate-bounce" />
-              <span>Select vehicle and target destination to compute route avoiding active hazards.</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-[#27272A] px-3 py-2 text-[9px] text-[#71717A] lg:px-5">
+        <span>AEGIS FLEET OPERATIONS</span>
+        <span>CONNECTED ROUTING ENGINE</span>
+        <span className="ml-auto mono">TACTICAL NAVIGATION ONLINE</span>
+      </footer>
     </div>
   );
 }

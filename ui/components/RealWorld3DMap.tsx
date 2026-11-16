@@ -13,6 +13,8 @@ interface Props {
   onToggleTheater?: () => void;
   activeLayers?: Set<string>;
   zoomLevel?: number;
+  cameraPreset?: string;
+  hideInternalOverlays?: boolean;
 }
 
 // 3D Landmark & Sector Coordinates
@@ -57,7 +59,9 @@ export const RealWorld3DMap: React.FC<Props> = ({
   isTheaterMode = false, 
   onToggleTheater,
   activeLayers,
-  zoomLevel
+  zoomLevel,
+  cameraPreset,
+  hideInternalOverlays = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -956,6 +960,12 @@ export const RealWorld3DMap: React.FC<Props> = ({
     }
   }, [zoomLevel]);
 
+  useEffect(() => {
+    if (cameraPreset) {
+      setCameraPreset(cameraPreset);
+    }
+  }, [cameraPreset]);
+
   // Smooth Camera Preset Controller
   const setCameraPreset = (preset: string) => {
     setActiveCamPreset(preset);
@@ -997,8 +1007,10 @@ export const RealWorld3DMap: React.FC<Props> = ({
       {/* 3D WebGL Canvas */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Floating Tactical Status Badges */}
-      <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none z-10">
+      {/* Floating Tactical Status Badges & Overlays */}
+      {!hideInternalOverlays && (
+        <>
+          <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none z-10">
         <div className={`backdrop-blur-md px-3.5 py-1.5 rounded-full border text-[11px] font-[800] shadow-sm flex items-center gap-2 ${
           theme === 'tactical'
             ? 'bg-slate-900/90 border-slate-700/80 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
@@ -1163,6 +1175,8 @@ export const RealWorld3DMap: React.FC<Props> = ({
         <Compass size={11} className={theme === 'tactical' ? 'text-cyan-400' : 'text-[#244974]'} />
         <span>Left-click: Orbit • Right-click: Pan • Scroll: Zoom • Click entity: Inspect</span>
       </div>
+        </>
+      )}
     </div>
   );
 };
