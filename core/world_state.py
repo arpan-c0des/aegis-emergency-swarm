@@ -59,10 +59,10 @@ class CityState:
             "Road_I9": "open"
         }
         
-        # Hospitals with bed capacities and trauma capability
+        # Hospitals with bed capacities and trauma capability in Kolkata
         self.hospitals: Dict[str, Hospital] = {
-            "H1": Hospital(id="H1", name="Central Trauma Hospital (H1)", total_beds=37, available_beds=28, trauma_capable=True),
-            "H2": Hospital(id="H2", name="St. Luke's Community Clinic (H2)", total_beds=29, available_beds=12, trauma_capable=False)
+            "H1": Hospital(id="H1", name="SSKM Hospital / IPGMER Central Trauma (H1)", total_beds=37, available_beds=28, trauma_capable=True),
+            "H2": Hospital(id="H2", name="Apollo / St. Luke's Critical Care Clinic (H2)", total_beds=29, available_beds=12, trauma_capable=False)
         }
         
         # Fleet of response vehicles (accessible by both technical ID and tactical callsign)

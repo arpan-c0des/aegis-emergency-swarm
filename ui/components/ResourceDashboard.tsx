@@ -28,14 +28,14 @@ export const ResourceDashboard: React.FC<Props> = ({ state, solanaAudit }) => {
       {/* Hospital Bed Availability */}
       <div className="bg-gray-900 border border-gray-800 p-3 rounded-lg">
         <div className="flex justify-between items-center text-xs text-blue-400 font-bold uppercase mb-1">
-          <span>Trauma Capacity</span>
+          <span>Trauma Bed Intake</span>
           <Bed size={16} />
         </div>
         <div className="text-xl font-bold text-white">
-          {state.hospitals?.H1?.available_beds ?? 0} <span className="text-xs font-normal text-gray-400">/ {state.hospitals?.H1?.total_beds ?? 0} H1 Beds</span>
+          {state.hospitals?.H1?.available_beds ?? 0} <span className="text-xs font-normal text-gray-400">/ {state.hospitals?.H1?.total_beds ?? 0} SSKM (H1)</span>
         </div>
         <div className="text-xs text-gray-400 mt-1">
-          H2 Clinic: {state.hospitals?.H2?.available_beds ?? 0} non-trauma beds
+          Apollo (H2): {state.hospitals?.H2?.available_beds ?? 0} beds available
         </div>
       </div>
 

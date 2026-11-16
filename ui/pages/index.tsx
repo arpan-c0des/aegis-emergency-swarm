@@ -27,7 +27,7 @@ const DEFAULT_LAYERS = ["AMBULANCE", "FIRE ENGINE", "POLICE CRUISER", "ROAD BARR
 
 const INITIAL_FEED = [
   { id: 1, agent: "GEMINI · ROUTING", color: "#3B82F6", text: "Analyzing Sector 6B impact — 3 corridors show degraded throughput near subway entrance.", time: "14:32:08", tag: "REASONING" },
-  { id: 2, agent: "H1 · TRAUMA DESK", color: "#10B981", text: "Negotiating beds: Central Trauma (H1) accepted 8 trauma cases, 4 held for stabilization.", time: "14:32:41", tag: "BEDS" },
+  { id: 2, agent: "H1 · TRAUMA DESK", color: "#10B981", text: "Negotiating beds: SSKM Hospital (H1) accepted 8 trauma cases, 4 held for stabilization.", time: "14:32:41", tag: "BEDS" },
   { id: 3, agent: "GEMINI · FLEET", color: "#F59E0B", text: "Rerouting Engine 4 via Corridor B. ETA improved by 2m 10s to Sector 5C.", time: "14:33:12", tag: "REROUTE" },
   { id: 4, agent: "FIELD · UNIT 12", color: "#EF4444", text: "First unit on scene confirms multi-vehicle collision with secondary fire. Triage active.", time: "14:33:47", tag: "FIELD" },
   { id: 5, agent: "GEMINI · EVAC", color: "#8B5CF6", text: "Evac Zone B expanded 120m east. Civilian flow rerouted to Assembly Station 2.", time: "14:34:20", tag: "EVAC" }
@@ -36,7 +36,7 @@ const INITIAL_FEED = [
 const AMBIENT_PHRASES = [
   "Scanning Sector 6B & 5C telemetry for new pressure points…",
   "Rebalancing ambulance coverage across adjacent corridors…",
-  "Validating Central Trauma H1 intake against live bed telemetry…",
+  "Validating SSKM Hospital (H1) intake against live bed telemetry…",
   "Checking corridor clearance for Engine 4 and Unit 12…",
   "Updating civilian assembly routing after evacuation zone update…",
   "Cross-checking weather impact on aerial and road response units…"
@@ -366,7 +366,7 @@ export default function AegisTacticalCommandConsole() {
     const secDisplay = sec.replace("_", " ");
     const blockText = blocked ? "Corridor D4 blocked by structural debris. Emergency units rerouting via Corridor B." : "All secondary response corridors open and clear.";
     
-    return `Attention all units. Incident Commander broadcast for ${secDisplay}. Confirmed ${sev} priority ${haz} emergency with ${cas} casualties reported. ${blockText} Fire Engine 4 deployed for immediate hazard suppression. Ambulances AMB-01 and AMB-02 dispatched for casualty triage and transport to Central Trauma H1. Civilian evacuation established toward Assembly Station 2. All responding units acknowledge orders.`;
+    return `Attention all units. Incident Commander broadcast for ${secDisplay}. Confirmed ${sev} priority ${haz} emergency with ${cas} casualties reported. ${blockText} Fire Engine 4 deployed for immediate hazard suppression. Ambulances AMB-01 and AMB-02 dispatched for casualty triage and transport to SSKM Hospital H1. Civilian evacuation established toward Assembly Station 2. All responding units acknowledge orders.`;
   };
 
   // Dynamic Radio Voice Broadcast Controller
@@ -527,7 +527,7 @@ export default function AegisTacticalCommandConsole() {
       setElapsedSeconds((prev) => prev + 47);
       setPolicyScore((prev) => Math.min(99, prev + 0.3));
 
-      const tickGuideline = `Attention all units. Incident Commander tick update: Casualty evacuation proceeding. Ambulances en-route to Central Trauma H1. Sector perimeter holding secure.`;
+      const tickGuideline = `Attention all units. Incident Commander tick update: Casualty evacuation proceeding. Ambulances en-route to SSKM Hospital H1. Sector perimeter holding secure.`;
       postFeedItem(
         "SIMULATION · TICK",
         "#3B82F6",
@@ -824,37 +824,42 @@ export default function AegisTacticalCommandConsole() {
               </div>
             </div>
 
-            {/* Trauma & Reception Beds */}
-            <p className="mt-3 text-[12px] font-semibold">Trauma & Reception Beds</p>
+            {/* Kolkata Trauma & Reception Beds */}
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-[12px] font-semibold text-white">Kolkata Trauma & Bed Intake</p>
+              <Link href="/hospitals" className="text-[10px] text-[#3B82F6] hover:underline font-mono">
+                Manage ↗
+              </Link>
+            </div>
             <div className="mt-1.5 space-y-2">
-              {/* Central Trauma H1 */}
+              {/* SSKM Hospital / IPGMER H1 */}
               <div className="flex items-center gap-2.5 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5">
                 <ProgressRing pct={76} color="#10B981">
                   <span className="mono text-[12px] font-bold">76%</span>
                 </ProgressRing>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold truncate">
-                    CENTRAL TRAUMA <span className="text-[#71717A]">(H1)</span>
+                  <p className="text-[11px] font-bold truncate text-white">
+                    SSKM HOSPITAL <span className="text-[#71717A]">(H1)</span>
                   </p>
-                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">28 / 37 beds free</p>
+                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">28 / 37 beds free · Central Trauma</p>
                   <span className="mt-1 inline-block rounded-full bg-[#10B981]/10 px-2 py-0.5 text-[8px] font-bold text-[#10B981]">
-                    TRAUMA READY
+                    LEVEL 1 TRAUMA READY
                   </span>
                 </div>
               </div>
 
-              {/* St Luke's Clinic H2 */}
+              {/* Apollo Multispecialty / St Luke's H2 */}
               <div className="flex items-center gap-2.5 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5">
                 <ProgressRing pct={41} color="#F59E0B">
                   <span className="mono text-[12px] font-bold">41%</span>
                 </ProgressRing>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold truncate">
-                    ST LUKE'S CLINIC <span className="text-[#71717A]">(H2)</span>
+                  <p className="text-[11px] font-bold truncate text-white">
+                    APOLLO / ST. LUKE'S <span className="text-[#71717A]">(H2)</span>
                   </p>
-                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">12 / 29 beds free</p>
+                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">12 / 29 beds free · EM Bypass</p>
                   <span className="mt-1 inline-block rounded-full bg-[#3B82F6]/10 px-2 py-0.5 text-[8px] font-bold text-[#3B82F6]">
-                    GENERATOR NOMINAL
+                    BURNS & TRIAGE READY
                   </span>
                 </div>
               </div>

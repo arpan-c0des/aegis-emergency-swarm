@@ -127,13 +127,13 @@ export default function HospitalsPage() {
           <div className="flex flex-wrap items-center justify-between pb-4 border-b border-[#27272A] gap-3">
             <div>
               <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">
-                MEDICAL RECEPTION WARD — BED DISPATCH & ADMISSIONS
+                KOLKATA MEDICAL RECEPTION WARD — BED DISPATCH & ADMISSIONS
               </p>
               <h1 className="text-lg sm:text-xl font-bold text-white mt-1">
-                Emergency Capacity & Triage Bed Allocation
+                Kolkata Emergency Trauma & Triage Bed Allocation
               </h1>
               <p className="text-xs text-[#A1A1AA] mt-0.5">
-                Real-time capacity reporting synchronized directly with Gemini multi-agent swarm decisions.
+                Real-time bed telemetry for SSKM Hospital (H1) and Apollo Multispecialty (H2) synchronized with Gemini swarm routing.
               </p>
             </div>
             <span className="px-3 py-1.5 rounded-full bg-[#10B981]/10 border border-[#10B981]/30 text-[#10B981] text-[10px] font-bold flex items-center gap-1.5">
@@ -156,19 +156,22 @@ export default function HospitalsPage() {
           {/* Hospital Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             
-            {/* Hospital 1: Central Trauma (H1) */}
+            {/* Hospital 1: SSKM Hospital / IPGMER Central Trauma (H1) */}
             <div className="rounded-2xl border border-[#27272A] bg-[#17171B] p-5 space-y-4">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                    CENTRAL TRAUMA (H1)
+                    SSKM HOSPITAL / IPGMER (H1)
                   </h3>
-                  <p className="text-[11px] text-[#A1A1AA] mt-1">
-                    Dedicated surgical units for critical explosion and burn casualties. Priority destination for trauma ambulances.
+                  <div className="text-[10px] font-mono text-[#10B981] mt-0.5">
+                    📍 Bhowanipore / Harish Mukherjee Rd · Central Kolkata
+                  </div>
+                  <p className="text-[11px] text-[#A1A1AA] mt-1.5 leading-relaxed">
+                    Primary Level-1 Trauma Hospital & surgical intensive care facility. Priority reception destination for critical trauma, neuro, and blast casualties.
                   </p>
                 </div>
-                <span className="text-[10px] bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold px-2 py-0.5 rounded-full shrink-0">
+                <span className="text-[10px] bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold px-2.5 py-1 rounded-full shrink-0">
                   LEVEL 1 TRAUMA
                 </span>
               </div>
@@ -227,7 +230,7 @@ export default function HospitalsPage() {
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#10B981] text-black hover:bg-[#059669] transition shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   <CheckCircle size={14} />
-                  <span>Update Central Trauma</span>
+                  <span>Update SSKM Hospital (H1)</span>
                 </button>
                 <button 
                   onClick={() => { setH1Beds(28); updateHospital("H1", 28); }}
@@ -239,20 +242,23 @@ export default function HospitalsPage() {
               </div>
             </div>
 
-            {/* Hospital 2: St. Luke's Community Clinic (H2) */}
+            {/* Hospital 2: Apollo Multispecialty / St. Luke's Clinic (H2) */}
             <div className="rounded-2xl border border-[#27272A] bg-[#17171B] p-5 space-y-4">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
-                    ST. LUKE'S COMMUNITY (H2)
+                    APOLLO MULTISPECIALTY / ST. LUKE'S (H2)
                   </h3>
-                  <p className="text-[11px] text-[#A1A1AA] mt-1">
-                    Specialized burn and stabilization triage center. Secondary reception destination for stable casualties.
+                  <div className="text-[10px] font-mono text-[#3B82F6] mt-0.5">
+                    📍 EM Bypass / Kadapara · Salt Lake Corridor
+                  </div>
+                  <p className="text-[11px] text-[#A1A1AA] mt-1.5 leading-relaxed">
+                    Specialized burn triage, stabilization, and tertiary trauma recovery. Secondary reception facility for Salt Lake Sector V and EM Bypass casualties.
                   </p>
                 </div>
-                <span className="text-[10px] bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/30 font-bold px-2 py-0.5 rounded-full shrink-0">
-                  TRAUMA LEVEL 2
+                <span className="text-[10px] bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/30 font-bold px-2.5 py-1 rounded-full shrink-0">
+                  TRAUMA LEVEL 2 / BURNS
                 </span>
               </div>
 
@@ -310,7 +316,7 @@ export default function HospitalsPage() {
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#3B82F6] text-white hover:bg-[#2563EB] transition shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   <CheckCircle size={14} />
-                  <span>Update St. Luke's</span>
+                  <span>Update Apollo / St. Luke's (H2)</span>
                 </button>
                 <button 
                   onClick={() => { setH2Beds(12); updateHospital("H2", 12); }}
