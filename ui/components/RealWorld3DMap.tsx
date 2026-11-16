@@ -8,6 +8,9 @@ import {
 
 interface Props {
   worldState?: any;
+  theme?: 'tactical' | 'clay';
+  isTheaterMode?: boolean;
+  onToggleTheater?: () => void;
 }
 
 // 3D Landmark & Sector Coordinates
@@ -46,7 +49,12 @@ interface InspectedEntity {
   details: { label: string; value: string | number }[];
 }
 
-export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
+export const RealWorld3DMap: React.FC<Props> = ({ 
+  worldState, 
+  theme = 'clay', 
+  isTheaterMode = false, 
+  onToggleTheater 
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -66,16 +74,28 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
   const [weatherVisual, setWeatherVisual] = useState<boolean>(true);
   const [activeCamPreset, setActiveCamPreset] = useState<string>('overview');
 
+  // Dynamic theme update for 3D Background & Fog
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const isDark = theme === 'tactical';
+    const bgColor = isDark ? 0x060b16 : 0xdce8f5;
+    sceneRef.current.background = new THREE.Color(bgColor);
+    sceneRef.current.fog = new THREE.FogExp2(bgColor, isDark ? 0.005 : 0.004);
+  }, [theme]);
+
   // 1. Scene Initialization
   useEffect(() => {
     if (!containerRef.current) return;
     const width = containerRef.current.clientWidth;
     const height = containerRef.current.clientHeight;
 
+    const isDark = theme === 'tactical';
+    const bgColor = isDark ? 0x060b16 : 0xdce8f5;
+
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0xdce8f5);
-    scene.fog = new THREE.FogExp2(0xdce8f5, 0.005);
+    scene.background = new THREE.Color(bgColor);
+    scene.fog = new THREE.FogExp2(bgColor, isDark ? 0.005 : 0.004);
 
     const camera = new THREE.PerspectiveCamera(38, width / height, 1, 1000);
     cameraRef.current = camera;
@@ -631,9 +651,18 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
     const domElem = renderer.domElement;
     domElem.addEventListener('pointerdown', handlePointerDown);
 
+    let ro: ResizeObserver | null = null;
+    if (containerRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        handleResize();
+      });
+      ro.observe(containerRef.current);
+    }
+
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      if (ro) ro.disconnect();
       domElem.removeEventListener('pointerdown', handlePointerDown);
       renderer.dispose();
       controls.dispose();
@@ -651,9 +680,12 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
       rainSystemRef.current.visible = weatherVisual && isRaining;
     }
     if (scene) {
+      const isDark = theme === 'tactical';
+      const baseColor = isDark ? 0x060b16 : (isRaining ? 0xb0c4de : 0xdce8f5);
+      scene.background = new THREE.Color(baseColor);
       scene.fog = new THREE.FogExp2(
-        isRaining ? 0xb0c4de : 0xdce8f5,
-        isRaining ? 0.0075 : 0.005
+        baseColor,
+        isDark ? 0.005 : (isRaining ? 0.0075 : 0.004)
       );
     }
 
@@ -880,7 +912,7 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
       }
     });
 
-  }, [worldState, weatherVisual]);
+  }, [worldState, weatherVisual, theme]);
 
   // Smooth Camera Preset Controller
   const setCameraPreset = (preset: string) => {
@@ -915,89 +947,155 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
   const activeIncidents = Object.values(worldState?.incidents || {}).filter((i: any) => i.active && i.severity !== "extinguished");
 
   return (
-    <div className="relative w-full h-[490px] rounded-[24px] overflow-hidden select-none bg-[#dce8f5] border-2 border-white shadow-inner">
+    <div className={`relative w-full ${isTheaterMode ? 'h-[620px]' : 'h-[490px]'} rounded-[24px] overflow-hidden select-none transition-all duration-300 ${
+      theme === 'tactical'
+        ? 'bg-[#060b16] border border-cyan-500/30 shadow-[0_0_30px_rgba(6,182,212,0.15)]'
+        : 'bg-[#dce8f5] border-2 border-white shadow-inner'
+    }`}>
       {/* 3D WebGL Canvas */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* Floating Tactical Status Badges */}
       <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none z-10">
-        <div className="bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white text-[11px] font-[800] text-[#2F2940] shadow-sm flex items-center gap-2">
+        <div className={`backdrop-blur-md px-3.5 py-1.5 rounded-full border text-[11px] font-[800] shadow-sm flex items-center gap-2 ${
+          theme === 'tactical'
+            ? 'bg-slate-900/90 border-slate-700/80 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+            : 'bg-white/95 border-white text-[#2F2940]'
+        }`}>
           <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] animate-pulse"></span>
           <span>NYC SECTOR 5 & 6 // HIGH-RES 3D COMMAND MESH</span>
         </div>
 
         {activeIncidents.length > 0 ? (
-          <div className="bg-[#fee2e2]/95 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[10px] font-[800] text-[#b91c1c] shadow-sm flex items-center gap-1.5 w-fit">
-            <Flame size={12} className="animate-bounce" />
+          <div className={`backdrop-blur-md px-3 py-1 rounded-full border text-[10px] font-[800] shadow-sm flex items-center gap-1.5 w-fit ${
+            theme === 'tactical'
+              ? 'bg-red-950/80 border-red-500/40 text-red-300 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
+              : 'bg-[#fee2e2]/95 border-white text-[#b91c1c]'
+          }`}>
+            <Flame size={12} className="animate-bounce text-red-400" />
             <span>ACTIVE HAZARD ENGAGED AT SECTOR 5C (FIRE ENGINE ON-SCENE)</span>
           </div>
         ) : (
-          <div className="bg-[#ecfdf5]/95 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[10px] font-[800] text-[#047857] shadow-sm flex items-center gap-1.5 w-fit">
+          <div className={`backdrop-blur-md px-3 py-1 rounded-full border text-[10px] font-[800] shadow-sm flex items-center gap-1.5 w-fit ${
+            theme === 'tactical'
+              ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+              : 'bg-[#ecfdf5]/95 border-white text-[#047857]'
+          }`}>
             <span>✓</span>
             <span>ALL CORRIDORS SECURED & NOMINAL</span>
           </div>
         )}
       </div>
 
-      {/* Camera View Presets Toolbar */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-white/95 backdrop-blur-md border border-white p-1 rounded-full text-[10px] font-[800] text-[#4A4458] shadow-md z-10">
+      {/* Camera View Presets & Mode Toolbar */}
+      <div className={`absolute top-3 right-3 flex items-center gap-1.5 backdrop-blur-md border p-1 rounded-full text-[10px] font-[800] shadow-md z-10 ${
+        theme === 'tactical'
+          ? 'bg-slate-900/90 border-slate-700/80 text-slate-300 shadow-[0_4px_20px_rgba(0,0,0,0.5)]'
+          : 'bg-white/95 border-white text-[#4A4458]'
+      }`}>
         <button
           onClick={() => setCameraPreset('overview')}
-          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'overview' ? 'bg-[#2F2940] text-white shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+          className={`px-3 py-1 rounded-full transition ${
+            activeCamPreset === 'overview'
+              ? (theme === 'tactical' ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm' : 'bg-[#2F2940] text-white shadow-sm')
+              : (theme === 'tactical' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-[#F3EFFC] text-[#5A4E75]')
+          }`}
         >
           Overview
         </button>
         <button
           onClick={() => setCameraPreset('sector_5c')}
-          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'sector_5c' ? 'bg-[#FFE6A5] text-[#874b0c] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+          className={`px-3 py-1 rounded-full transition ${
+            activeCamPreset === 'sector_5c'
+              ? (theme === 'tactical' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'bg-[#FFE6A5] text-[#874b0c] shadow-sm')
+              : (theme === 'tactical' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-[#F3EFFC] text-[#5A4E75]')
+          }`}
         >
           🔥 Fire 5C
         </button>
         <button
           onClick={() => setCameraPreset('sector_6b')}
-          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'sector_6b' ? 'bg-[#D6C2FF] text-[#4a2d82] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+          className={`px-3 py-1 rounded-full transition ${
+            activeCamPreset === 'sector_6b'
+              ? (theme === 'tactical' ? 'bg-purple-500 text-white font-bold shadow-sm' : 'bg-[#D6C2FF] text-[#4a2d82] shadow-sm')
+              : (theme === 'tactical' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-[#F3EFFC] text-[#5A4E75]')
+          }`}
         >
           🚇 Subway 6B
         </button>
         <button
           onClick={() => setCameraPreset('hospital')}
-          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'hospital' ? 'bg-[#B5DEFF] text-[#1b446f] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+          className={`px-3 py-1 rounded-full transition ${
+            activeCamPreset === 'hospital'
+              ? (theme === 'tactical' ? 'bg-blue-500 text-white font-bold shadow-sm' : 'bg-[#B5DEFF] text-[#1b446f] shadow-sm')
+              : (theme === 'tactical' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-[#F3EFFC] text-[#5A4E75]')
+          }`}
         >
           🏥 Hospital H1
         </button>
         <button
           onClick={() => setCameraPreset('topdown')}
-          className={`px-3 py-1 rounded-full transition ${activeCamPreset === 'topdown' ? 'bg-[#C3FFB5] text-[#2E5A2A] shadow-sm' : 'hover:bg-[#F3EFFC] text-[#5A4E75]'}`}
+          className={`px-3 py-1 rounded-full transition ${
+            activeCamPreset === 'topdown'
+              ? (theme === 'tactical' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'bg-[#C3FFB5] text-[#2E5A2A] shadow-sm')
+              : (theme === 'tactical' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-[#F3EFFC] text-[#5A4E75]')
+          }`}
         >
           🗺️ 2D Map
         </button>
         <button
           onClick={() => setWeatherVisual(!weatherVisual)}
           title="Toggle Weather Rain Precipitation"
-          className="w-7 h-7 rounded-full bg-white hover:bg-[#F3EFFC] flex items-center justify-center border border-white text-[#7B6E96] transition"
+          className={`w-7 h-7 rounded-full flex items-center justify-center border transition ${
+            theme === 'tactical'
+              ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-cyan-300'
+              : 'bg-white hover:bg-[#F3EFFC] border-white text-[#7B6E96]'
+          }`}
         >
           {weatherVisual ? <CloudRain size={13} className="text-[#0284c7]" /> : <Sun size={13} className="text-[#f59e0b]" />}
         </button>
+
+        {onToggleTheater && (
+          <button
+            onClick={onToggleTheater}
+            title={isTheaterMode ? "Exit Theater Mode" : "Expand 3D Theater Mode"}
+            className={`w-7 h-7 rounded-full flex items-center justify-center border transition ${
+              theme === 'tactical'
+                ? (isTheaterMode ? 'bg-cyan-500 text-slate-950 border-cyan-400' : 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-cyan-300')
+                : (isTheaterMode ? 'bg-[#2F2940] text-white border-white' : 'bg-white hover:bg-[#F3EFFC] border-white text-[#7B6E96]')
+            }`}
+          >
+            <Maximize2 size={13} />
+          </button>
+        )}
       </div>
 
       {/* Tactical Object Inspector Overlay (Triggered by Clicking Any Unit/District) */}
       {inspectedEntity && (
-        <div className="absolute bottom-4 left-4 max-w-xs w-full bg-white/95 backdrop-blur-md border-2 border-white rounded-[20px] p-3.5 shadow-xl z-20 animate-in fade-in slide-in-from-bottom-2">
-          <div className="flex items-center justify-between pb-2 border-b border-[#EEE8F8] mb-2">
+        <div className={`absolute bottom-4 left-4 max-w-xs w-full backdrop-blur-md border rounded-[20px] p-3.5 shadow-xl z-20 animate-in fade-in slide-in-from-bottom-2 ${
+          theme === 'tactical'
+            ? 'bg-slate-900/95 border-slate-700/80 text-slate-100 shadow-[0_4px_24px_rgba(0,0,0,0.6)]'
+            : 'bg-white/95 border-2 border-white text-[#2F2940]'
+        }`}>
+          <div className={`flex items-center justify-between pb-2 border-b mb-2 ${
+            theme === 'tactical' ? 'border-slate-800' : 'border-[#EEE8F8]'
+          }`}>
             <div className="flex items-center gap-2">
               <div 
                 className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-[800] border border-white"
                 style={{ backgroundColor: inspectedEntity.badgeColor }}
               >
-                {inspectedEntity.type === 'unit' ? <Truck size={12} /> : inspectedEntity.type === 'hospital' ? <Bed size={12} /> : <Flame size={12} />}
+                {inspectedEntity.type === 'unit' ? <Truck size={12} className="text-slate-900" /> : inspectedEntity.type === 'hospital' ? <Bed size={12} className="text-slate-900" /> : <Flame size={12} className="text-slate-900" />}
               </div>
-              <span className="font-[800] text-xs text-[#2F2940] truncate max-w-[150px]">
+              <span className={`font-[800] text-xs truncate max-w-[150px] ${
+                theme === 'tactical' ? 'text-cyan-200' : 'text-[#2F2940]'
+              }`}>
                 {inspectedEntity.title}
               </span>
             </div>
             <button 
               onClick={() => setInspectedEntity(null)}
-              className="text-[#9A8EB0] hover:text-[#2F2940] text-xs font-[800]"
+              className={theme === 'tactical' ? 'text-slate-400 hover:text-white text-xs font-[800]' : 'text-[#9A8EB0] hover:text-[#2F2940] text-xs font-[800]'}
             >
               ✕
             </button>
@@ -1005,9 +1103,9 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
 
           <div className="space-y-1.5 text-[11px] font-[700]">
             {inspectedEntity.details.map((d, i) => (
-              <div key={i} className="flex justify-between items-center text-[#4A4458]">
-                <span className="text-[#8E819E]">{d.label}:</span>
-                <span className="font-[800] text-[#244974]">{d.value}</span>
+              <div key={i} className="flex justify-between items-center">
+                <span className={theme === 'tactical' ? 'text-slate-400' : 'text-[#8E819E]'}>{d.label}:</span>
+                <span className={`font-[800] ${theme === 'tactical' ? 'text-cyan-300 font-mono' : 'text-[#244974]'}`}>{d.value}</span>
               </div>
             ))}
           </div>
@@ -1015,8 +1113,12 @@ export const RealWorld3DMap: React.FC<Props> = ({ worldState }) => {
       )}
 
       {/* Orbit Controls Guidance Pill */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-white text-[9px] font-[800] text-[#7B6E96] shadow-sm pointer-events-none">
-        <Compass size={11} className="text-[#244974]" />
+      <div className={`absolute bottom-3 right-3 flex items-center gap-2 backdrop-blur-md px-3 py-1 rounded-full border text-[9px] font-[800] shadow-sm pointer-events-none ${
+        theme === 'tactical'
+          ? 'bg-slate-900/85 border-slate-700/80 text-slate-300 shadow-[0_2px_10px_rgba(0,0,0,0.4)]'
+          : 'bg-white/90 border-white text-[#7B6E96]'
+      }`}>
+        <Compass size={11} className={theme === 'tactical' ? 'text-cyan-400' : 'text-[#244974]'} />
         <span>Left-click: Orbit • Right-click: Pan • Scroll: Zoom • Click entity: Inspect</span>
       </div>
     </div>
