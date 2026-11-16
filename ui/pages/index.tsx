@@ -98,6 +98,7 @@ export default function AegisTacticalCommandConsole() {
   const [zoom, setZoom] = useState<number>(1.0);
   const [cameraPreset, setCameraPreset] = useState<string>("overview");
   const [showLayersOverlay, setShowLayersOverlay] = useState<boolean>(false);
+  const [rightPanelTab, setRightPanelTab] = useState<'all' | 'feed' | 'injector'>('all');
   const [isTheaterMode, setIsTheaterMode] = useState<boolean>(false);
   const [feedItems, setFeedItems] = useState(INITIAL_FEED);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -1184,223 +1185,263 @@ export default function AegisTacticalCommandConsole() {
         </section>
 
         {/* ======================================================================= */}
-        {/* COLUMN 3: RIGHT ASIDE (SWARM DELIBERATION FEED & SCENARIO DRILL TRAINER) */}
+        {/* COLUMN 3: RIGHT ASIDE (SWARM NOTIFICATIONS FEED & SCENARIO DRILL TRAINER)*/}
         {/* ======================================================================= */}
-        <aside className="w-full shrink-0 lg:w-[320px] xl:w-[350px] flex flex-col gap-3 lg:overflow-hidden">
+        <aside className="w-full shrink-0 lg:w-[320px] xl:w-[360px] flex flex-col gap-3 lg:overflow-y-auto scroll-thin lg:pr-0.5">
           
-          {/* Card 1: Gemini 2.5 Flash - Live Swarm Activity Feed */}
-          <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-[#27272A] bg-[#131316] shadow-sm">
-            <div className="flex items-center gap-2 border-b border-[#27272A] p-3">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#8B5CF6]/15 text-[#8B5CF6] shrink-0">
-                <Sparkles size={15} />
-              </span>
-              <div className="min-w-0 flex-1 leading-none">
-                <p className="text-[12px] font-bold">Gemini 2.5 Flash</p>
-                <p className="mt-1 text-[9px] text-[#A1A1AA]">LIVE SWARM ACTIVITY FEED</p>
-              </div>
-              <span className="flex items-center gap-1 rounded-full bg-[#10B981]/10 px-2 py-0.5 text-[9px] font-bold text-[#10B981] shrink-0">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] live-dot" />
-                LIVE
-              </span>
+          {/* Quick View Mode Switcher for Right Aside */}
+          <div className="flex items-center justify-between p-1 rounded-xl bg-[#131316] border border-[#27272A] shrink-0 text-[10px] font-mono">
+            <span className="text-[#71717A] px-2 font-bold uppercase tracking-wider text-[9px]">03 · TACTICAL FEED</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setRightPanelTab('all')}
+                className={`px-2 py-0.5 rounded-lg transition ${
+                  rightPanelTab === 'all'
+                    ? "bg-[#F59E0B] text-black font-bold shadow-sm"
+                    : "text-[#A1A1AA] hover:text-white"
+                }`}
+              >
+                ALL
+              </button>
+              <button
+                onClick={() => setRightPanelTab('feed')}
+                className={`px-2 py-0.5 rounded-lg transition ${
+                  rightPanelTab === 'feed'
+                    ? "bg-[#8B5CF6] text-white font-bold shadow-sm"
+                    : "text-[#A1A1AA] hover:text-white"
+                }`}
+              >
+                NOTIFICATIONS
+              </button>
+              <button
+                onClick={() => setRightPanelTab('injector')}
+                className={`px-2 py-0.5 rounded-lg transition ${
+                  rightPanelTab === 'injector'
+                    ? "bg-[#F59E0B] text-black font-bold shadow-sm"
+                    : "text-[#A1A1AA] hover:text-white"
+                }`}
+              >
+                INJECTOR
+              </button>
             </div>
+          </div>
 
-            {/* Scrollable Feed List */}
-            <div className="scroll-thin min-h-[220px] flex-1 space-y-1 overflow-y-auto p-2.5 lg:max-h-none">
-              {filteredFeed.map((item, index) => (
-                <div 
-                  key={item.id}
-                  className={`animate-fadeUp relative flex gap-2.5 rounded-xl p-2 transition ${
-                    index === 0 ? "bg-[#1C1C21] border border-[#27272A]" : "hover:bg-[#17171B]"
-                  }`}
-                >
-                  <div className="flex flex-col items-center">
-                    <span 
-                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[8px] font-bold text-white shadow-sm"
-                      style={{ background: item.color }}
-                    >
-                      {item.agent.split("·")[0].trim().slice(0, 2)}
-                    </span>
-                    {index < filteredFeed.length - 1 && (
-                      <span className="mt-1 w-px flex-1 bg-[#27272A]" />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-1.5 text-[9px]">
-                      <b className="text-[10px] text-white">{item.agent}</b>
-                      <span className="mono text-[#71717A]">{item.time}</span>
-                      <span className="rounded bg-[#27272A] px-1 py-0.5 text-[8px] text-[#A1A1AA]">{item.tag}</span>
-                    </p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-[#D4D4D8]">
-                      {item.text}
-                    </p>
-                  </div>
+          {/* Card 1: Gemini 2.5 Flash - Live Swarm Activity & Notifications Feed */}
+          {(rightPanelTab === 'all' || rightPanelTab === 'feed') && (
+            <section className="rounded-2xl border border-[#27272A] bg-[#131316] shadow-sm shrink-0 flex flex-col">
+              <div className="flex items-center gap-2 border-b border-[#27272A] p-3">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#8B5CF6]/15 text-[#8B5CF6] shrink-0">
+                  <Sparkles size={15} />
+                </span>
+                <div className="min-w-0 flex-1 leading-none">
+                  <p className="text-[12px] font-bold">Gemini 2.5 Flash</p>
+                  <p className="mt-1 text-[9px] text-[#A1A1AA]">LIVE NOTIFICATIONS & SWARM FEED</p>
                 </div>
-              ))}
-
-              {filteredFeed.length === 0 && (
-                <p className="p-3 text-center text-[11px] text-[#71717A]">
-                  No feed items match your search.
-                </p>
-              )}
-            </div>
-
-            {/* Swarm Feed Footer */}
-            <div className="flex items-center justify-between border-t border-[#27272A] px-3 py-2 text-[9px] text-[#71717A]">
-              <span className="flex items-center">
-                <Radio size={11} className="mr-1 inline text-[#10B981]" />
-                Auto-refresh · 5s
-              </span>
-              <span className="mono">TICK {simulationTick}</span>
-            </div>
-          </section>
-
-          {/* Card 2: Live Drill Injector & Model Trainer */}
-          <section className="rounded-2xl border border-[#27272A] bg-[#131316] p-3 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold">LIVE DRILL INJECTOR & TRAINER</p>
-                <p className="mt-0.5 text-[9px] text-[#A1A1AA]">Drill mode · trains RLIF policy</p>
+                <span className="flex items-center gap-1 rounded-full bg-[#10B981]/10 px-2 py-0.5 text-[9px] font-bold text-[#10B981] shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] live-dot" />
+                  LIVE
+                </span>
               </div>
-              <Zap size={15} className="text-[#F59E0B]" />
-            </div>
 
-            {/* Quick Drill Presets */}
-            <div className="mt-2.5 flex flex-wrap gap-1">
-              <button 
-                onClick={() => applyPreset('subway')} 
-                className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
-              >
-                🚇 Subway 6B
-              </button>
-              <button 
-                onClick={() => applyPreset('hazmat')} 
-                className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
-              >
-                🧪 Hazmat 5C
-              </button>
-              <button 
-                onClick={() => applyPreset('flood')} 
-                className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
-              >
-                🌊 Flood
-              </button>
-              <button 
-                onClick={() => applyPreset('collapse')} 
-                className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
-              >
-                🏢 Collapse
-              </button>
-            </div>
+              {/* Scrollable Feed List - bounded height prevents pushing or overlapping */}
+              <div className={`scroll-thin space-y-1.5 overflow-y-auto p-2.5 ${
+                rightPanelTab === 'feed' ? "max-h-[560px]" : "max-h-[210px] xl:max-h-[240px]"
+              }`}>
+                {filteredFeed.map((item, index) => (
+                  <div 
+                    key={item.id}
+                    className={`animate-fadeUp relative flex gap-2.5 rounded-xl p-2 transition ${
+                      index === 0 ? "bg-[#1C1C21] border border-[#27272A]" : "hover:bg-[#17171B]"
+                    }`}
+                  >
+                    <div className="flex flex-col items-center">
+                      <span 
+                        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[8px] font-bold text-white shadow-sm"
+                        style={{ background: item.color }}
+                      >
+                        {item.agent.split("·")[0].trim().slice(0, 2)}
+                      </span>
+                      {index < filteredFeed.length - 1 && (
+                        <span className="mt-1 w-px flex-1 bg-[#27272A]" />
+                      )}
+                    </div>
 
-            {/* Target Sector & Hazard Type Selects */}
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <label className="text-[9px] text-[#A1A1AA] block">
-                TARGET SECTOR
-                <select 
-                  value={targetSector} 
-                  onChange={(e) => {
-                    setTargetSector(e.target.value);
-                    if (e.target.value === "Sector_6B") setCameraPreset("sector_6b");
-                    else if (e.target.value === "Sector_5C") setCameraPreset("sector_5c");
-                  }}
-                  className="mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] outline-none"
-                >
-                  <option value="Sector_6B">Sector 6B (Subway)</option>
-                  <option value="Sector_5C">Sector 5C (Industrial)</option>
-                  <option value="Evac_Zone">Evacuation Zone</option>
-                </select>
-              </label>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-1.5 text-[9px]">
+                        <b className="text-[10px] text-white">{item.agent}</b>
+                        <span className="mono text-[#71717A]">{item.time}</span>
+                        <span className="rounded bg-[#27272A] px-1 py-0.5 text-[8px] text-[#A1A1AA]">{item.tag}</span>
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-[#D4D4D8]">
+                        {item.text}
+                      </p>
+                    </div>
+                  </div>
+                ))}
 
-              <label className="text-[9px] text-[#A1A1AA] block">
-                HAZARD TYPE
-                <select 
-                  value={hazardType} 
-                  onChange={(e) => setHazardType(e.target.value)}
-                  className="mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] outline-none"
-                >
-                  <option value="Collision">Collision</option>
-                  <option value="Fire">Fire</option>
-                  <option value="Flood">Flood</option>
-                  <option value="Gas Rupture">Gas Rupture</option>
-                </select>
-              </label>
-            </div>
+                {filteredFeed.length === 0 && (
+                  <p className="p-3 text-center text-[11px] text-[#71717A]">
+                    No feed items match your search.
+                  </p>
+                )}
+              </div>
 
-            {/* Severity Buttons */}
-            <p className="mt-2.5 text-[9px] text-[#A1A1AA]">SEVERITY</p>
-            <div className="mt-1 grid grid-cols-3 rounded-lg bg-[#17171B] p-0.5 gap-1">
-              {["Critical", "High", "Medium"].map((lvl) => (
+              {/* Swarm Feed Footer */}
+              <div className="flex items-center justify-between border-t border-[#27272A] px-3 py-2 text-[9px] text-[#71717A] shrink-0">
+                <span className="flex items-center">
+                  <Radio size={11} className="mr-1 inline text-[#10B981]" />
+                  Auto-refresh · 5s
+                </span>
+                <span className="mono">TICK {simulationTick}</span>
+              </div>
+            </section>
+          )}
+
+          {/* Card 2: Live Drill Injector & Scenario Insertion Section */}
+          {(rightPanelTab === 'all' || rightPanelTab === 'injector') && (
+            <section className="rounded-2xl border border-[#27272A] bg-[#131316] p-3 shadow-sm shrink-0 flex flex-col">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold">LIVE DRILL INJECTOR & TRAINER</p>
+                  <p className="mt-0.5 text-[9px] text-[#A1A1AA]">Scenario Insertion · Trains RLIF policy</p>
+                </div>
+                <Zap size={15} className="text-[#F59E0B]" />
+              </div>
+
+              {/* Quick Drill Presets */}
+              <div className="mt-2.5 flex flex-wrap gap-1">
                 <button 
-                  key={lvl}
-                  onClick={() => setSeverity(lvl)}
-                  aria-pressed={severity === lvl}
-                  className={`rounded-md py-1 text-[10px] font-bold transition ${
-                    severity === lvl
-                      ? (lvl === "Critical" ? "bg-[#EF4444] text-white" : (lvl === "High" ? "bg-[#F59E0B] text-black" : "bg-[#3B82F6] text-white"))
-                      : "text-[#A1A1AA] hover:text-white"
-                  }`}
+                  onClick={() => applyPreset('subway')} 
+                  className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
                 >
-                  {lvl}
+                  🚇 Subway 6B
                 </button>
-              ))}
-            </div>
+                <button 
+                  onClick={() => applyPreset('hazmat')} 
+                  className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
+                >
+                  🧪 Hazmat 5C
+                </button>
+                <button 
+                  onClick={() => applyPreset('flood')} 
+                  className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
+                >
+                  🌊 Flood
+                </button>
+                <button 
+                  onClick={() => applyPreset('collapse')} 
+                  className="text-[9px] font-bold px-2 py-1 rounded bg-[#17171B] border border-[#27272A] hover:border-[#F59E0B] text-[#D4D4D8] transition"
+                >
+                  🏢 Collapse
+                </button>
+              </div>
 
-            {/* Casualties Count Slider */}
-            <div className="mt-2.5 flex items-center justify-between text-[10px]">
-              <span className="text-[#A1A1AA]">Casualties</span>
-              <b className="mono text-[#F59E0B]">{casualtiesCount}</b>
-            </div>
-            <input 
-              type="range"
-              min="0"
-              max="40"
-              value={casualtiesCount}
-              onChange={(e) => setCasualtiesCount(Number(e.target.value))}
-              aria-label="Casualties count"
-              className="mt-1.5 w-full"
-            />
+              {/* Target Sector & Hazard Type Selects */}
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <label className="text-[9px] text-[#A1A1AA] block">
+                  TARGET SECTOR
+                  <select 
+                    value={targetSector} 
+                    onChange={(e) => {
+                      setTargetSector(e.target.value);
+                      if (e.target.value === "Sector_6B") setCameraPreset("sector_6b");
+                      else if (e.target.value === "Sector_5C") setCameraPreset("sector_5c");
+                    }}
+                    className="mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] outline-none"
+                  >
+                    <option value="Sector_6B">Sector 6B (Subway)</option>
+                    <option value="Sector_5C">Sector 5C (Industrial)</option>
+                    <option value="Evac_Zone">Evacuation Zone</option>
+                  </select>
+                </label>
 
-            {/* Block Corridors Switch */}
-            <div className="mt-2.5 flex items-center justify-between">
-              <span className="text-[11px]">Block Corridors</span>
-              <ToggleSwitch on={blockCorridors} onChange={setBlockCorridors} label="Block corridors" />
-            </div>
+                <label className="text-[9px] text-[#A1A1AA] block">
+                  HAZARD TYPE
+                  <select 
+                    value={hazardType} 
+                    onChange={(e) => setHazardType(e.target.value)}
+                    className="mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] outline-none"
+                  >
+                    <option value="Collision">Collision</option>
+                    <option value="Fire">Fire</option>
+                    <option value="Flood">Flood</option>
+                    <option value="Gas Rupture">Gas Rupture</option>
+                  </select>
+                </label>
+              </div>
 
-            {/* Incident Tactical Briefing Textarea */}
-            <label className="mt-2.5 block text-[9px] text-[#A1A1AA]">
-              INCIDENT BRIEFING
-              <textarea 
-                value={incidentBriefing}
-                onChange={(e) => setIncidentBriefing(e.target.value)}
-                rows={2}
-                className="mt-1 w-full resize-none rounded-lg p-2 text-[11px] leading-relaxed outline-none"
+              {/* Severity Buttons */}
+              <p className="mt-2.5 text-[9px] text-[#A1A1AA]">SEVERITY</p>
+              <div className="mt-1 grid grid-cols-3 rounded-lg bg-[#17171B] p-0.5 gap-1">
+                {["Critical", "High", "Medium"].map((lvl) => (
+                  <button 
+                    key={lvl}
+                    onClick={() => setSeverity(lvl)}
+                    aria-pressed={severity === lvl}
+                    className={`rounded-md py-1 text-[10px] font-bold transition ${
+                      severity === lvl
+                        ? (lvl === "Critical" ? "bg-[#EF4444] text-white" : (lvl === "High" ? "bg-[#F59E0B] text-black" : "bg-[#3B82F6] text-white"))
+                        : "text-[#A1A1AA] hover:text-white"
+                    }`}
+                  >
+                    {lvl}
+                  </button>
+                ))}
+              </div>
+
+              {/* Casualties Count Slider & Block Corridors */}
+              <div className="mt-2.5 flex items-center justify-between text-[10px]">
+                <span className="text-[#A1A1AA]">Casualties: <b className="mono text-[#F59E0B]">{casualtiesCount}</b></span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#A1A1AA]">Block Road D4:</span>
+                  <ToggleSwitch on={blockCorridors} onChange={setBlockCorridors} label="Block corridors" />
+                </div>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="40"
+                value={casualtiesCount}
+                onChange={(e) => setCasualtiesCount(Number(e.target.value))}
+                aria-label="Casualties count"
+                className="mt-1.5 w-full"
               />
-            </label>
 
-            {/* Action Buttons: Inject Scenario & Simulate Tick */}
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <button 
-                onClick={injectAndTrainSwarm}
-                disabled={isInjecting}
-                className="rounded-lg bg-[#F59E0B] py-2.5 text-[11px] font-bold text-black hover:bg-[#FBBF24] transition shadow-md disabled:opacity-50"
-              >
-                {isInjecting ? "INJECTING…" : "⚡ INJECT SCENARIO"}
-              </button>
-              <button 
-                onClick={simulateTick}
-                disabled={isSimulating}
-                className="rounded-lg border border-[#3F3F46] bg-[#17171B] py-2.5 text-[11px] font-bold hover:border-[#A1A1AA] transition disabled:opacity-50 text-white"
-              >
-                {isSimulating ? "TICKING…" : "SIMULATE TICK"}
-              </button>
-            </div>
+              {/* Incident Tactical Briefing Textarea */}
+              <label className="mt-2.5 block text-[9px] text-[#A1A1AA]">
+                INCIDENT BRIEFING
+                <textarea 
+                  value={incidentBriefing}
+                  onChange={(e) => setIncidentBriefing(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full resize-none rounded-lg p-2 text-[11px] leading-relaxed outline-none"
+                />
+              </label>
 
-            {/* Status Feedback Pill */}
-            <p role="status" className="mt-2 rounded-lg border border-[#27272A] bg-[#17171B] px-2 py-1.5 text-[9px] leading-relaxed text-[#A1A1AA] truncate">
-              {statusMessage}
-            </p>
-          </section>
+              {/* Action Buttons: Inject Scenario & Simulate Tick */}
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button 
+                  onClick={injectAndTrainSwarm}
+                  disabled={isInjecting}
+                  className="rounded-lg bg-[#F59E0B] py-2.5 text-[11px] font-bold text-black hover:bg-[#FBBF24] transition shadow-md disabled:opacity-50"
+                >
+                  {isInjecting ? "INJECTING…" : "⚡ INJECT SCENARIO"}
+                </button>
+                <button 
+                  onClick={simulateTick}
+                  disabled={isSimulating}
+                  className="rounded-lg border border-[#3F3F46] bg-[#17171B] py-2.5 text-[11px] font-bold hover:border-[#A1A1AA] transition disabled:opacity-50 text-white"
+                >
+                  {isSimulating ? "TICKING…" : "SIMULATE TICK"}
+                </button>
+              </div>
+
+              {/* Status Feedback Pill */}
+              <p role="status" className="mt-2 rounded-lg border border-[#27272A] bg-[#17171B] px-2 py-1.5 text-[9px] leading-relaxed text-[#A1A1AA] truncate">
+                {statusMessage}
+              </p>
+            </section>
+          )}
         </aside>
       </main>
 
