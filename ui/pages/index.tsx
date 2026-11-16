@@ -2,12 +2,26 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { RealWorld3DMap } from '../components/RealWorld3DMap';
+import dynamic from 'next/dynamic';
 import { 
   Activity, Ambulance, Bell, Brain, ChevronDown, CloudSun, Crosshair, 
   Download, Flame, HeartPulse, Layers, Maximize2, Navigation, Radio, 
   Search, Shield, Siren, Sparkles, Truck, Waves, Wind, Zap, Check, Copy, ExternalLink, Volume2, ShieldAlert
 } from 'lucide-react';
+
+// Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
+const KolkataLeafletMap = dynamic(
+  () => import('../components/KolkataLeafletMap').then((mod) => mod.KolkataLeafletMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-[#09090B] text-[#A1A1AA] gap-2">
+        <span className="h-3 w-3 rounded-full bg-[#10B981] animate-ping" />
+        <span className="mono text-[11px] font-bold tracking-widest text-[#F59E0B]">INITIALIZING KOLKATA TACTICAL LEAFLET MESH…</span>
+      </div>
+    )
+  }
+);
 
 const DEFAULT_LAYERS = ["AMBULANCE", "FIRE ENGINE", "POLICE CRUISER", "ROAD BARRICADE", "ACTIVE HAZARD", "EVAC ZONE"];
 
@@ -964,15 +978,14 @@ export default function AegisTacticalCommandConsole() {
         {/* COLUMN 2: CENTER VIEWPORT (3D TACTICAL CITY PERSPECTIVE & METRICS)       */}
         {/* ======================================================================= */}
         <section className="min-w-0 flex-1 flex flex-col gap-3 lg:overflow-hidden">
-          {/* Main 3D Tactical Perspective Canvas Container */}
-          <div className={`relative min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-[#27272A] bg-[#0B0B0E] transition-all duration-300 ${
+          {/* Main Kolkata Leaflet Tactical Perspective Canvas Container */}
+          <div className={`relative min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-[#27272A] bg-[#09090B] transition-all duration-300 ${
             isTheaterMode ? "lg:min-h-[640px]" : ""
           }`}>
             
-            {/* Real Three.js 3D City Map Component Mounted in Background */}
-            {/* hideInternalOverlays={true} prevents colliding duplicate internal badges/buttons */}
+            {/* Real Kolkata Leaflet Tactical Map with Simulated Incidents */}
             <div className="absolute inset-0 z-0">
-              <RealWorld3DMap 
+              <KolkataLeafletMap 
                 worldState={worldState} 
                 theme="tactical" 
                 isTheaterMode={isTheaterMode} 
@@ -981,6 +994,7 @@ export default function AegisTacticalCommandConsole() {
                 zoomLevel={zoom}
                 cameraPreset={cameraPreset}
                 hideInternalOverlays={true}
+                onSelectIncident={(incId) => setSelectedIncident(`INCIDENT #${incId}`)}
               />
             </div>
 
@@ -998,14 +1012,14 @@ export default function AegisTacticalCommandConsole() {
 
             {/* TOP HUD TOOLBAR: Camera Presets (Left) + Viewport Controls (Right) */}
             <div className="absolute left-3 top-3 right-3 flex flex-wrap items-center justify-between gap-2 z-20 pointer-events-auto">
-              {/* Left: Camera Angle Presets */}
+              {/* Left: Camera Angle Presets for Kolkata Sectors */}
               <div className="flex items-center gap-1 p-1 rounded-xl bg-black/75 border border-white/10 backdrop-blur-md">
                 {[
                   { id: 'overview', label: 'Overview' },
-                  { id: 'sector_5c', label: '🔥 Fire 5C' },
-                  { id: 'sector_6b', label: '🚇 Subway 6B' },
-                  { id: 'hospital', label: '🏥 Trauma H1' },
-                  { id: 'topdown', label: '🗺️ 2D Map' },
+                  { id: 'sector_5c', label: '🔥 5C Salt Lake' },
+                  { id: 'sector_6b', label: '🚇 6B Esplanade' },
+                  { id: 'hospital', label: '🏥 SSKM Trauma' },
+                  { id: 'topdown', label: '🗺️ Kolkata Map' },
                 ].map((cam) => (
                   <button
                     key={cam.id}
@@ -1349,9 +1363,9 @@ export default function AegisTacticalCommandConsole() {
                     }}
                     className="mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] outline-none"
                   >
-                    <option value="Sector_6B">Sector 6B (Subway)</option>
-                    <option value="Sector_5C">Sector 5C (Industrial)</option>
-                    <option value="Evac_Zone">Evacuation Zone</option>
+                    <option value="Sector_6B">Sector 6B (Esplanade Subway)</option>
+                    <option value="Sector_5C">Sector 5C (Salt Lake Sector V)</option>
+                    <option value="Evac_Zone">Evacuation Zone (Maidan)</option>
                   </select>
                 </label>
 
