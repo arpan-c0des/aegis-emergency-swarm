@@ -1,0 +1,66 @@
+[
+  {
+    "episode_id": 1,
+    "timestamp": "2026-11-16 02:51:09 UTC",
+    "scenario_input": {
+      "incident_type": "subway_gas_rupture",
+      "location": "Sector_6B",
+      "severity": "critical",
+      "details": "Methane gas ignition at subway concourse. Multiple trapped commuters.",
+      "block_road": "Road_B2",
+      "patient_count": 4
+    },
+    "fitness_score": 96,
+    "actions_count": 5,
+    "lesson_learned": "Drill #1 [subway_gas_rupture @ Sector_6B]: Prioritized 4 casualties; bypassed Road_B2; dispatched emergency response with 96% efficiency.",
+    "command_digest": "INCIDENT ACTION PLAN - TICK 1:\n1. Medical units immediately transport priority casualties to Central Trauma.\n2. Fire suppression engines maintain containment perimeter at fire at Sector_5C.\n3. Police enforce road cordons"
+  },
+  {
+    "episode_id": 2,
+    "timestamp": "2026-11-16 02:51:56 UTC",
+    "scenario_input": {
+      "incident_type": "subway_gas_rupture",
+      "location": "Sector_6B",
+      "severity": "critical",
+      "details": "Methane gas ignition at subway concourse. Multiple trapped commuters.",
+      "block_road": "Road_B2",
+      "patient_count": 4
+    },
+    "fitness_score": 97,
+    "actions_count": 5,
+    "lesson_learned": "Drill #2 [subway_gas_rupture @ Sector_6B]: Prioritized 4 casualties; bypassed Road_B2; dispatched emergency response with 97% efficiency.",
+    "command_digest": "INCIDENT ACTION PLAN - TICK 1:\n1. Medical units immediately transport priority casualties to Central Trauma.\n2. Fire suppression engines maintain containment perimeter at fire at Sector_5C.\n3. Police enforce road cordons"
+  },
+  {
+    "episode_id": 3,
+    "timestamp": "2026-11-16 03:12:33 UTC",
+    "scenario_input": {
+      "incident_type": "subway_gas_rupture",
+      "location": "Sector_6B",
+      "severity": "critical",
+      "details": "Methane gas explosion at subway concourse.",
+      "block_road": "Road_D4",
+      "patient_count": 2
+    },
+    "fitness_score": 98,
+    "actions_count": 5,
+    "lesson_learned": "Drill #3 [subway_gas_rupture @ Sector_6B]: Prioritized 2 casualties; bypassed Road_D4; dispatched emergency response with 98% efficiency.",
+    "command_digest": "INCIDENT ACTION PLAN - TICK 1:\n1. Suppression: FIRE-03 establish immediate containment at fire at Sector 5C.\n2. Evacuation: AMB-07 transport P_01 (critical) to Central Trauma Hospital (H1).\n3. Perimeter & Traffic: POL-02"
+  },
+  {
+    "episode_id": 4,
+    "timestamp": "2026-11-16 03:16:25 UTC",
+    "scenario_input": {
+      "incident_type": "hazardous_spill",
+      "location": "Sector_5C",
+      "severity": "high",
+      "details": "Corrosive chemical container breach at industrial depot. Toxic smoke cloud.",
+      "block_road": "Road_B2",
+      "patient_count": 3
+    },
+    "fitness_score": 99,
+    "actions_count": 5,
+    "lesson_learned": "Drill #4 [hazardous_spill @ Sector_5C]: Prioritized 3 casualties; bypassed Road_B2; dispatched emergency response with 99% efficiency.",
+    "command_digest": "INCIDENT ACTION PLAN - TICK 1:\n1. Suppression: FIRE-03 establish immediate containment at fire at Sector 5C.\n2. Evacuation: AMB-07 transport P_01 (critical) to Central Trauma Hospital (H1).\n3. Perimeter & Traffic: POL-02"
+  }
+]

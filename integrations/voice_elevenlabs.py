@@ -26,19 +26,50 @@ class DispatchAudioService:
             return None
 
         try:
-            print(f"[ElevenLabs] Generating tactical radio audio for: \"{broadcast_text[:60]}...\"")
+            # Clean broadcast text of markdown, quotes, and redundant prefixes
+            clean_text = broadcast_text.strip()
+            # Strip common redundant prefixes so speech doesn't stutter or duplicate
+            redundant_prefixes = [
+                "Radio Broadcast:", "Radio Broadcast -", "Radio Announcement:",
+                "Broadcast:", "Dispatch:",
+                "Attention all units. Incident Commander broadcast:",
+                "Attention all units. Incident Commander dispatch:",
+                "Attention all units,", "Attention all units:", "Attention all units.",
+                "Incident Command to all units:", "Incident Command orders:",
+                "Incident Command to all stations:"
+            ]
+            for prefix in redundant_prefixes:
+                if clean_text.lower().startswith(prefix.lower()):
+                    clean_text = clean_text[len(prefix):].strip()
+
+            clean_text = clean_text.strip(' *"#\'')
+            if not clean_text:
+                clean_text = "All units acknowledge. Incident action plan orders in effect."
+
+            spoken_text = f"Attention all units. Incident Commander broadcast: {clean_text}"
+            print(f"[ElevenLabs] Generating tactical radio audio: \"{spoken_text}\"")
+
             audio_generator = self.client.text_to_speech.convert(
                 voice_id=self.voice_id,
-                text=f"Attention all units. Incident Commander broadcast: {broadcast_text}",
+                text=spoken_text,
                 model_id="eleven_turbo_v2_5"
             )
 
-            # Write stream chunks to file
-            with open(output_path, "wb") as f:
+            # Write stream chunks to temporary file first, then atomically replace
+            temp_path = f"{output_path}.tmp"
+            with open(temp_path, "wb") as f:
                 for chunk in audio_generator:
                     f.write(chunk)
 
-            print(f"[ElevenLabs] Audio broadcast successfully generated -> {output_path}")
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except Exception:
+                    pass
+            os.replace(temp_path, output_path)
+
+            file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            print(f"[ElevenLabs] Audio broadcast successfully generated -> {output_path} ({file_size} bytes)")
             return output_path
 
         except Exception as e:

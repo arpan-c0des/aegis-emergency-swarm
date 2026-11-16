@@ -12,6 +12,7 @@ from core.world_state import CityState, Incident, Patient
 from core.tools import SimulationTools, NavigationRouter
 from core.agents import SwarmAgents
 from core.orchestrator import SwarmOrchestrator
+from core.training import training_engine, FINETUNE_FILE
 from integrations.voice_elevenlabs import DispatchAudioService, DEFAULT_AUDIO_PATH
 from integrations.warehouse_snowflake import SnowflakeWarehouse
 from integrations.audit_solana import SolanaAuditLedger
@@ -171,7 +172,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Configuration state for Auto vs Manual Injection
 system_config = {
-    "auto_mode": True
+    "auto_mode": False  # Default to manual / drill capable for training
 }
 
 class ManualInjectPayload(BaseModel):
@@ -231,13 +232,13 @@ async def update_hospital_beds(payload: HospitalUpdatePayload):
         return {"status": "success", "hospital": h.__dict__}
     return {"status": "error", "message": "Hospital ID not found"}
 
-# 3. MANUAL DATA INJECTION (TRAINING / DRILL SCENARIOS)
+# 3. MANUAL DATA INJECTION & LIVE MODEL TRAINING
 @app.post("/api/admin/inject-data")
 async def inject_custom_data(data: ManualInjectPayload):
-    if system_config["auto_mode"]:
-        return {"status": "denied", "message": "Disable Auto-Mode before injecting manual scenario data."}
-    
-    # Inject dynamic hazard
+    # Capture snapshot before injection for episode logging
+    initial_state_snapshot = orchestrator.state.export_state_dict()
+
+    # 1. Inject dynamic hazard into city state
     inc_id = f"INC_{len(orchestrator.state.incidents) + 1:02d}"
     normalized_loc = NavigationRouter.normalize_node(data.location)
     orchestrator.state.incidents[inc_id] = Incident(
@@ -261,18 +262,66 @@ async def inject_custom_data(data: ManualInjectPayload):
             status="waiting"
         )
 
-    # Broadcast to all clients immediately
-    fresh_state = orchestrator.state.export_state_dict()
+    # 2. RUN SWARM CYCLE IMMEDIATELY ON THIS INJECTED SCENARIO
+    print(f"\n⚡ LIVE SCENARIO INJECTED: {data.incident_type} at {normalized_loc}. Triggering Swarm Execution...")
+    result = orchestrator.run_cycle()
+    time_step = result["time_step"]
+    command_plan = result["command_plan"]
+    actions = result["executed_actions"]
+    broadcast_text = result["broadcast_summary"]
+
+    # 3. Persist actions and anchor cryptographic proof
+    snowflake_wh.log_swarm_actions(time_step, actions)
+    solana_tx = solana_ledger.record_decision_hash(time_step, command_plan, actions)
+    result["solana_audit"] = solana_tx
+
+    # 4. Generate dynamic voice dispatch audio
+    audio_path = voice_service.synthesize_dispatch_call(broadcast_text, output_path=DEFAULT_AUDIO_PATH)
+    result["audio_available"] = bool(audio_path and os.path.exists(audio_path))
+
+    # 5. TRAIN MODEL: Record training episode and update in-context memory + fine-tuning dataset
+    training_record = training_engine.record_scenario_training_episode(
+        scenario_input=data.dict(),
+        initial_state=initial_state_snapshot,
+        transcript=result["transcript"],
+        command_plan=command_plan,
+        executed_actions=actions,
+        updated_state=result["updated_world_state"]
+    )
+    result["training_episode"] = training_record
+    result["training_stats"] = training_engine.get_training_stats()
+
+    # 6. Broadcast full simulation + training update to all connected clients
     await broadcast_message({
         "type": "SIMULATION_UPDATE",
-        "data": {
-            "updated_world_state": fresh_state
-        }
+        "data": result
     })
 
     return {
-        "status": "injected",
+        "status": "injected_and_executed",
         "incident_id": inc_id,
-        "current_incidents": len(orchestrator.state.incidents),
-        "world_state": fresh_state
+        "result": result,
+        "training": training_record,
+        "world_state": result["updated_world_state"]
     }
+
+# 4. MODEL TRAINING & ADAPTATION TELEMETRY ENDPOINTS
+@app.get("/api/training/stats")
+def get_training_metrics():
+    """Returns current model training metrics, episode counts, and policy adaptations."""
+    return training_engine.get_training_stats()
+
+@app.get("/api/training/export")
+def export_finetune_dataset():
+    """Exports the Gemini fine-tuning JSONL dataset generated from live scenario runs."""
+    if FINETUNE_FILE.exists():
+        return FileResponse(
+            path=str(FINETUNE_FILE),
+            filename="gemini_emergency_swarm_finetune.jsonl",
+            media_type="application/x-jsonlines"
+        )
+    return Response(
+        content=json.dumps({"status": "empty", "message": "No fine-tune samples generated yet."}),
+        status_code=404,
+        media_type="application/json"
+    )
