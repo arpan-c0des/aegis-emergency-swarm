@@ -11,6 +11,8 @@ interface Props {
   theme?: 'tactical' | 'clay';
   isTheaterMode?: boolean;
   onToggleTheater?: () => void;
+  activeLayers?: Set<string>;
+  zoomLevel?: number;
 }
 
 // 3D Landmark & Sector Coordinates
@@ -53,7 +55,9 @@ export const RealWorld3DMap: React.FC<Props> = ({
   worldState, 
   theme = 'clay', 
   isTheaterMode = false, 
-  onToggleTheater 
+  onToggleTheater,
+  activeLayers,
+  zoomLevel
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -912,7 +916,45 @@ export const RealWorld3DMap: React.FC<Props> = ({
       }
     });
 
-  }, [worldState, weatherVisual, theme]);
+    // Apply layer visibility
+    vehiclesMapRef.current.forEach((vehRecord, uid) => {
+      const isAmb = uid.toLowerCase().includes('amb') || uid.toLowerCase().includes('med');
+      const isFire = uid.toLowerCase().includes('fire') || uid.toLowerCase().includes('eng');
+      const isPol = uid.toLowerCase().includes('pol') || uid.toLowerCase().includes('cruiser');
+      if (activeLayers) {
+        if (isAmb && !activeLayers.has('AMBULANCE')) vehRecord.group.visible = false;
+        else if (isFire && !activeLayers.has('FIRE ENGINE')) vehRecord.group.visible = false;
+        else if (isPol && !activeLayers.has('POLICE CRUISER')) vehRecord.group.visible = false;
+        else vehRecord.group.visible = true;
+      } else {
+        vehRecord.group.visible = true;
+      }
+    });
+
+    incidentsMapRef.current.forEach((hazard) => {
+      if (activeLayers && !activeLayers.has('ACTIVE HAZARD')) {
+        hazard.group.visible = false;
+      } else {
+        hazard.group.visible = true;
+      }
+    });
+
+    roadblocksMapRef.current.forEach((barGroup) => {
+      if (activeLayers && !activeLayers.has('ROAD BARRICADE')) {
+        barGroup.visible = false;
+      } else {
+        barGroup.visible = true;
+      }
+    });
+
+  }, [worldState, weatherVisual, theme, activeLayers]);
+
+  useEffect(() => {
+    if (cameraRef.current && zoomLevel) {
+      cameraRef.current.zoom = zoomLevel;
+      cameraRef.current.updateProjectionMatrix();
+    }
+  }, [zoomLevel]);
 
   // Smooth Camera Preset Controller
   const setCameraPreset = (preset: string) => {
