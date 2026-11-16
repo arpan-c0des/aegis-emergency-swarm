@@ -20,6 +20,7 @@ export default function ClaymorphicCommandConsole() {
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [clock, setClock] = useState<string>("");
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'waking' | 'online'>('checking');
 
   // Auto-Mode vs Manual Drill Training Mode
   const [autoMode, setAutoMode] = useState<boolean>(false); // Default to Manual Drill Mode
@@ -32,7 +33,7 @@ export default function ClaymorphicCommandConsole() {
     patient_count: 3
   });
 
-  const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL || `${BACKEND_URL.replace(/^http/, 'ws')}/ws`;
 
   // Live ticking UTC clock
@@ -46,43 +47,100 @@ export default function ClaymorphicCommandConsole() {
     return () => clearInterval(timer);
   }, []);
 
+  // Automatic Cloud Swarm Engine Activation, Auto-Wake & Heartbeat
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/state`)
-      .then((res) => res.json())
-      .then((data) => setWorldState(data))
-      .catch((err) => console.error("API unreachable", err));
+    let ws: WebSocket | null = null;
+    let isSubscribed = true;
+    let pollTimer: any = null;
+    let keepAliveTimer: any = null;
 
-    fetch(`${BACKEND_URL}/api/config`)
-      .then((res) => res.json())
-      .then((cfg) => {
-        if (typeof cfg.auto_mode === "boolean") setAutoMode(cfg.auto_mode);
-      })
-      .catch(() => {});
+    const connectWebSocket = () => {
+      if (!isSubscribed) return;
+      try {
+        ws = new WebSocket(WS_URL);
+        ws.onopen = () => {
+          if (isSubscribed) setBackendStatus('online');
+        };
+        ws.onmessage = (event) => {
+          if (!isSubscribed) return;
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "INITIAL_STATE" || msg.type === "SIMULATION_UPDATE" || msg.type === "RESET_STATE") {
+              const payload = msg.data.updated_world_state || msg.data;
+              setWorldState(payload);
+              if (msg.data.transcript) setTranscript(msg.data.transcript);
+              if (msg.data.command_plan) setCommandPlan(msg.data.command_plan);
+              if (msg.data.broadcast_summary) setBroadcastSummary(msg.data.broadcast_summary);
+              if (msg.data.solana_audit) setSolanaAudit(msg.data.solana_audit);
+              if (msg.data.training_stats) setTrainingStats(msg.data.training_stats);
+            }
+          } catch (_) {}
+        };
+        ws.onerror = () => {
+          if (isSubscribed && ws) {
+            try { ws.close(); } catch (_) {}
+          }
+        };
+        ws.onclose = () => {
+          if (isSubscribed) {
+            setTimeout(connectWebSocket, 3500);
+          }
+        };
+      } catch (_) {
+        if (isSubscribed) setTimeout(connectWebSocket, 3500);
+      }
+    };
 
-    fetch(`${BACKEND_URL}/api/training/stats`)
-      .then((res) => res.json())
-      .then((stats) => setTrainingStats(stats))
-      .catch(() => {});
+    const wakeAndSyncBackend = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/state`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (isSubscribed) {
+            setWorldState(data);
+            setBackendStatus('online');
+            connectWebSocket();
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(WS_URL);
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "INITIAL_STATE" || msg.type === "SIMULATION_UPDATE" || msg.type === "RESET_STATE") {
-          const payload = msg.data.updated_world_state || msg.data;
-          setWorldState(payload);
-          if (msg.data.transcript) setTranscript(msg.data.transcript);
-          if (msg.data.command_plan) setCommandPlan(msg.data.command_plan);
-          if (msg.data.broadcast_summary) setBroadcastSummary(msg.data.broadcast_summary);
-          if (msg.data.solana_audit) setSolanaAudit(msg.data.solana_audit);
-          if (msg.data.training_stats) setTrainingStats(msg.data.training_stats);
+            fetch(`${BACKEND_URL}/api/config`).then(r => r.json()).then(cfg => {
+              if (typeof cfg.auto_mode === "boolean") setAutoMode(cfg.auto_mode);
+            }).catch(() => {});
+
+            fetch(`${BACKEND_URL}/api/training/stats`).then(r => r.json()).then(stats => {
+              setTrainingStats(stats);
+            }).catch(() => {});
+          }
+          return true;
+        } else {
+          if (isSubscribed) setBackendStatus('waking');
+          return false;
         }
-      };
-    } catch (_) {}
+      } catch (_) {
+        if (isSubscribed) setBackendStatus('waking');
+        return false;
+      }
+    };
+
+    // 1. Initial wake-up attempt on mount
+    wakeAndSyncBackend().then(success => {
+      if (!success && isSubscribed) {
+        // Poll every 3 seconds while Render wakes from sleep
+        pollTimer = setInterval(async () => {
+          const ok = await wakeAndSyncBackend();
+          if (ok && pollTimer) clearInterval(pollTimer);
+        }, 3000);
+      }
+    });
+
+    // 2. Keep-alive heartbeat: ping backend every 4 minutes while browser tab is open
+    keepAliveTimer = setInterval(() => {
+      fetch(`${BACKEND_URL}/`, { cache: 'no-store' }).catch(() => {});
+    }, 4 * 60 * 1000);
 
     return () => {
+      isSubscribed = false;
       if (ws) ws.close();
+      if (pollTimer) clearInterval(pollTimer);
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
     };
   }, []);
 
@@ -369,6 +427,28 @@ export default function ClaymorphicCommandConsole() {
             <span className="w-2 h-2 rounded-full bg-[#B5DEFF] border border-white"></span>
             <span className="text-[11px] font-[700] text-[#3E3650]">FITNESS: <b className="text-[#244974]">{trainingStats?.average_fitness_score ?? 96}%</b></span>
           </div>
+
+          {/* Cloud Backend Auto-Wake Pill */}
+          <div className="clay-inset px-3 py-1.5 rounded-full flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full border border-white ${
+              backendStatus === 'online' 
+                ? "bg-[#C3FFB5] animate-pulse" 
+                : backendStatus === 'waking'
+                ? "bg-[#FFE6A5] animate-ping"
+                : "bg-[#B5DEFF]"
+            }`}></span>
+            <span className="text-[11px] font-[700] text-[#3E3650]">
+              CLOUD ENGINE: <b className={
+                backendStatus === 'online' 
+                  ? "text-[#2E5A2A]" 
+                  : backendStatus === 'waking'
+                  ? "text-[#874b0c]" 
+                  : "text-[#5A4E75]"
+              }>
+                {backendStatus === 'online' ? "ONLINE (RENDER)" : backendStatus === 'waking' ? "WAKING UP (~30s)..." : "CONNECTING..."}
+              </b>
+            </span>
+          </div>
         </div>
 
         {/* Clock & Action Clay Buttons */}
@@ -414,6 +494,24 @@ export default function ClaymorphicCommandConsole() {
           </button>
         </div>
       </header>
+
+      {/* CLOUD ENGINE AUTO-WAKE NOTIFICATION */}
+      {backendStatus === 'waking' && (
+        <div className="clay-card p-3 rounded-[20px] bg-gradient-to-r from-[#FFF9E6] to-white border-2 border-white flex items-center justify-between shadow-sm animate-pulse mb-1">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-[12px] bg-[#FFE6A5] flex items-center justify-center text-[#874b0c] font-bold text-xs shrink-0">
+              ⚡
+            </div>
+            <div className="text-xs">
+              <span className="font-[800] text-[#874b0c]">CLOUD SWARM ENGINE ACTIVATING</span>
+              <span className="text-[#6D5D88] ml-2 font-[600]">
+                Render Free Tier spins down after inactivity. Waking up instance now (~30 seconds) — live telemetry & WebSockets will connect automatically!
+              </span>
+            </div>
+          </div>
+          <div className="w-4 h-4 rounded-full border-2 border-[#874b0c] border-t-transparent animate-spin shrink-0"></div>
+        </div>
+      )}
 
       {/* TACTICAL LIVE VOICE RADIO DISPATCH BANNER */}
       {broadcastSummary && (
