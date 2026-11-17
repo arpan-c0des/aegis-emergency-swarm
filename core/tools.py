@@ -242,7 +242,7 @@ class NavigationRouter:
         return "Sector_5C"
 
     @classmethod
-    def calculate_optimal_route(cls, origin: str, destination: str, blocked_roads: list) -> dict:
+    def calculate_optimal_route(cls, origin: str, destination: str, blocked_roads: list, speed_penalty_pct: float = 0.0) -> dict:
         """
         Calculates the real shortest road path on the actual Kolkata emergency map using Bidirectional A*.
         Guarantees optimal road distance while dynamically pruning blocked/hazardous corridors.
@@ -415,8 +415,9 @@ class NavigationRouter:
         # Generate coordinates list for mapping
         coords = [list(cls.NODES[wp]) for wp in full_waypoints if wp in cls.NODES]
 
-        # Emergency vehicle speed in city: 42 km/h accounting for siren priority & junctions
-        eta = (mu / 42.0) * 60.0
+        # Emergency vehicle speed in city: 42 km/h base, dynamically reduced by weather friction
+        effective_speed = max(20.0, 42.0 * (1.0 - speed_penalty_pct / 100.0))
+        eta = (mu / effective_speed) * 60.0
 
         return {
             "origin": norm_orig,

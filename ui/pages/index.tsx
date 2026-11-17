@@ -6,8 +6,10 @@ import dynamic from 'next/dynamic';
 import { 
   Activity, Ambulance, Bell, Brain, ChevronDown, CloudSun, Crosshair, 
   Download, Flame, HeartPulse, Layers, Maximize2, Navigation, Radio, 
-  Search, Shield, Siren, Sparkles, Truck, Waves, Wind, Zap, Check, Copy, ExternalLink, Volume2, ShieldAlert
+  Search, Shield, Siren, Sparkles, Truck, Waves, Wind, Zap, Check, Copy, ExternalLink, Volume2, ShieldAlert,
+  Droplets, Thermometer, RefreshCw, Gauge, AlertCircle
 } from 'lucide-react';
+import { fetchKolkataLiveWeather, LiveWeatherData, getSimulatedWeatherScenario } from '../utils/liveWeather';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -136,10 +138,48 @@ export default function AegisTacticalCommandConsole() {
     "Multi-vehicle collision near subway concourse. Multiple trapped commuters. Triage requested."
   );
 
+  // Live Adaptive Weather State
+  const [weatherData, setWeatherData] = useState<LiveWeatherData | null>(null);
+  const [selectedWeatherScenario, setSelectedWeatherScenario] = useState<'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog'>('live');
+  const [isRefreshingWeather, setIsRefreshingWeather] = useState<boolean>(false);
+
   const feedCounterRef = useRef<number>(6);
 
   const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL || `${BACKEND_URL.replace(/^http/, 'ws')}/ws`;
+
+  // Live Kolkata Atmospheric & Road Weather Telemetry Fetcher
+  const loadKolkataWeather = async (scenario: 'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog' = selectedWeatherScenario) => {
+    setIsRefreshingWeather(true);
+    try {
+      if (scenario === 'live') {
+        const live = await fetchKolkataLiveWeather();
+        setWeatherData(live);
+      } else {
+        const base = await fetchKolkataLiveWeather();
+        const sim = getSimulatedWeatherScenario(scenario);
+        setWeatherData({
+          ...base,
+          ...sim,
+          roadImpact: sim.roadImpact || base.roadImpact
+        });
+      }
+    } catch (err) {
+      console.error("Could not load Kolkata live weather:", err);
+    } finally {
+      setIsRefreshingWeather(false);
+    }
+  };
+
+  useEffect(() => {
+    loadKolkataWeather(selectedWeatherScenario);
+    const weatherInterval = setInterval(() => {
+      if (selectedWeatherScenario === 'live') {
+        loadKolkataWeather('live');
+      }
+    }, 180000); // Poll live weather every 3 minutes
+    return () => clearInterval(weatherInterval);
+  }, [selectedWeatherScenario]);
 
   // 1. Live Ticking Clock (Local & UTC sync)
   useEffect(() => {
@@ -295,6 +335,21 @@ export default function AegisTacticalCommandConsole() {
       return next;
     });
   };
+
+  // Dynamic Road Throughput SVG Curve based on Live Weather Hourly Data
+  const throughputPolylinePoints = useMemo(() => {
+    if (!weatherData?.hourlyTrend || weatherData.hourlyTrend.length < 2) {
+      return "0,14 60,12 120,10 180,14 260,11";
+    }
+    const count = weatherData.hourlyTrend.length;
+    const width = 260;
+    return weatherData.hourlyTrend.map((pt, i) => {
+      const x = Math.round((i / (count - 1)) * width);
+      const clampedPct = Math.max(30, Math.min(100, pt.throughputPct));
+      const y = Math.round(30 - ((clampedPct - 30) / 70) * 24);
+      return `${x},${y}`;
+    }).join(" ");
+  }, [weatherData]);
 
   // Quick Drill Presets - Auto-aligns camera and sets scenario values
   const applyPreset = (preset: 'subway' | 'hazmat' | 'flood' | 'collapse') => {
@@ -778,50 +833,163 @@ export default function AegisTacticalCommandConsole() {
               <Activity size={14} className="text-[#F59E0B]" />
             </div>
 
-            {/* Road Infrastructure */}
-            <div className="mt-3 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5">
+            {/* Live Adaptive Weather & Road Infrastructure */}
+            <div className="mt-3 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5 space-y-2.5">
+              
+              {/* Header: Title & Blocked Status */}
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-[12px] font-semibold">Road Infrastructure</p>
-                  <p className="mono mt-0.5 text-[11px] text-[#A1A1AA]">
+                  <p className="text-[12px] font-semibold text-white flex items-center gap-1.5">
+                    <span>Road Infrastructure</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#3B82F6]/15 text-[#60A5FA] border border-[#3B82F6]/30 font-mono">
+                      ADAPTIVE
+                    </span>
+                  </p>
+                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">
                     {blockedRoads.length > 0 ? "1 Sector" : "0 Sectors"} <span className="text-[#3F3F46]">|</span> {blockedRoads.length} Blocked
                   </p>
                 </div>
                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
                   blockedRoads.length > 0 
-                    ? "bg-[#EF4444]/15 text-[#EF4444]" 
-                    : "bg-[#10B981]/10 text-[#10B981]"
+                    ? "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30" 
+                    : "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30"
                 }`}>
-                  {blockedRoads.length > 0 ? "CORRIDOR BLOCKED" : "CLEAR"}
+                  {blockedRoads.length > 0 ? "CORRIDOR BLOCKED" : "CORRIDORS CLEAR"}
                 </span>
               </div>
 
-              <div className="mt-2.5 flex items-center gap-2 text-[11px] text-[#A1A1AA]">
-                <CloudSun size={14} className="text-[#F59E0B]" />
-                Weather <b className="text-white">Moderate</b>
-                <span className="ml-auto mono text-[#71717A]">24°C · 68%</span>
+              {/* Live Atmospheric Bar: Real Kolkata Weather Telemetry */}
+              <div className="rounded-lg bg-[#131316] p-2 border border-[#27272A] text-[11px] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">{weatherData?.conditionIcon || '☁️'}</span>
+                    <span className="font-bold text-white text-[11px]">
+                      {weatherData?.conditionText || 'Overcast'}
+                    </span>
+                    <span className="text-[#71717A] text-[9px] font-mono">· Kolkata</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="mono font-bold text-white text-[12px]">
+                      {weatherData?.temperatureC ?? 27.1}°C
+                    </span>
+                    <button
+                      onClick={() => loadKolkataWeather(selectedWeatherScenario)}
+                      disabled={isRefreshingWeather}
+                      className="text-[#71717A] hover:text-white transition p-0.5"
+                      title="Refresh live Kolkata weather"
+                    >
+                      <RefreshCw size={11} className={isRefreshingWeather ? "animate-spin text-[#3B82F6]" : ""} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Atmospheric Chips: Humidity, Wind, Rain */}
+                <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-[#A1A1AA] pt-1 border-t border-white/5">
+                  <div className="flex items-center gap-1">
+                    <Droplets size={10} className="text-[#3B82F6]" />
+                    <span>{weatherData?.humidityPct ?? 67}%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Wind size={10} className="text-[#10B981]" />
+                    <span>{weatherData?.windSpeedKmh ?? 5.5} km/h</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <CloudSun size={10} className="text-[#F59E0B]" />
+                    <span>{weatherData?.precipitationMm ?? 0.0} mm</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#27272A]">
-                <div className="h-full w-[72%] rounded-full bg-[#10B981]" />
+              {/* Dynamic Road Surface Physics & Traction Impact */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-[#71717A] uppercase font-bold">Surface Grip & Safety</span>
+                  <span 
+                    className="font-mono font-bold px-1.5 py-0.5 rounded text-[9px] border"
+                    style={{
+                      color: weatherData?.roadImpact.surfaceColor || '#10B981',
+                      backgroundColor: (weatherData?.roadImpact.surfaceColor || '#10B981') + '15',
+                      borderColor: (weatherData?.roadImpact.surfaceColor || '#10B981') + '35'
+                    }}
+                  >
+                    {weatherData?.roadImpact.surfaceStatusLabel || 'DRY ASPHALT · OPTIMAL'}
+                  </span>
+                </div>
+
+                {/* Dynamic Traction Bar */}
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#27272A]">
+                  <div 
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${weatherData?.roadImpact.tractionPct || 96}%`,
+                      backgroundColor: weatherData?.roadImpact.surfaceColor || '#10B981'
+                    }} 
+                  />
+                </div>
+
+                {/* Physical Penalties: Speed cap & Braking multiplier */}
+                <div className="flex justify-between text-[9px] font-mono text-[#71717A]">
+                  <span>Traction: <b className="text-white">{weatherData?.roadImpact.tractionPct ?? 96}%</b></span>
+                  <span>Safe Speed: <b className="text-white">{weatherData?.roadImpact.speedPenaltyPct ? `-${weatherData.roadImpact.speedPenaltyPct}%` : 'Nominal'}</b></span>
+                  <span>Braking: <b className="text-white">{weatherData?.roadImpact.brakingDistanceMult ?? 1.0}x</b></span>
+                </div>
               </div>
 
-              {/* Road Throughput Trend Graph */}
-              <svg viewBox="0 0 260 32" className="mt-2.5 h-8 w-full" aria-label="Road throughput trend">
-                <polyline 
-                  points="0,26 30,22 60,24 90,16 120,19 150,10 180,14 210,7 260,11" 
-                  fill="none" 
-                  stroke="#F59E0B" 
-                  strokeWidth="2" 
-                />
-                <polyline points="0,26 260,26" stroke="#27272A" strokeWidth="1" />
-              </svg>
-
-              <div className="flex justify-between text-[9px] text-[#71717A]">
-                <span>06:00</span>
-                <span>12:00</span>
-                <span>NOW</span>
+              {/* Road Throughput Dynamic Trend Curve (SVG) */}
+              <div>
+                <div className="flex items-center justify-between text-[9px] text-[#71717A] mb-1">
+                  <span>CORRIDOR THROUGHPUT TREND</span>
+                  <span className="font-mono text-[#10B981] font-bold">
+                    ~{weatherData?.roadImpact.estimatedThroughputPct ?? 88}% FLOW
+                  </span>
+                </div>
+                <svg viewBox="0 0 260 32" className="h-8 w-full" aria-label="Adaptive road throughput trend">
+                  <polyline 
+                    points={throughputPolylinePoints} 
+                    fill="none" 
+                    stroke={weatherData?.roadImpact.surfaceColor || "#10B981"} 
+                    strokeWidth="2" 
+                    strokeLinecap="round"
+                  />
+                  <polyline points="0,26 260,26" stroke="#27272A" strokeWidth="1" />
+                </svg>
+                <div className="flex justify-between text-[8px] font-mono text-[#52525B]">
+                  <span>06:00</span>
+                  <span>10:00</span>
+                  <span>14:00</span>
+                  <span>18:00</span>
+                  <span className="text-[#3B82F6] font-bold">NOW</span>
+                </div>
               </div>
+
+              {/* Weather Scenario Drill Simulator Toggles */}
+              <div className="pt-2 border-t border-[#27272A]/70">
+                <span className="text-[8px] uppercase font-bold text-[#71717A] tracking-wider block mb-1.5">
+                  Adaptive Weather Drill Simulator
+                </span>
+                <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                  {[
+                    { id: 'live', label: '🛰️ Live', title: 'Fetch Real-Time Open-Meteo Kolkata Telemetry' },
+                    { id: 'monsoon_rain', label: '🌧️ Rain', title: 'Simulate Heavy Monsoon Rainfall' },
+                    { id: 'cyclone_storm', label: '⛈️ Storm', title: 'Simulate Severe Cyclone Gale & Waterlogging' },
+                    { id: 'river_fog', label: '🌫️ Fog', title: 'Simulate Dense Hooghly River Fog' }
+                  ].map((sc) => (
+                    <button
+                      key={sc.id}
+                      onClick={() => setSelectedWeatherScenario(sc.id as any)}
+                      className={`py-1 px-1 rounded-md text-center font-bold border transition truncate ${
+                        selectedWeatherScenario === sc.id
+                          ? "bg-[#3B82F6] text-white border-[#3B82F6] shadow-sm"
+                          : "bg-[#131316] text-[#A1A1AA] border-[#27272A] hover:text-white"
+                      }`}
+                      title={sc.title}
+                    >
+                      {sc.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
             </div>
 
             {/* Kolkata Trauma & Reception Beds */}
@@ -1000,6 +1168,7 @@ export default function AegisTacticalCommandConsole() {
                 cameraPreset={cameraPreset}
                 hideInternalOverlays={true}
                 onSelectIncident={(incId) => setSelectedIncident(`INCIDENT #${incId}`)}
+                weatherData={weatherData}
               />
             </div>
 

@@ -6,12 +6,14 @@ import {
   BidiRouteResult, 
   KolkataNode 
 } from '../utils/bidirectionalAStar';
+import { LiveWeatherData } from '../utils/liveWeather';
 
 interface Props {
   selectedUnit: string;
   destination: string;
   routeResult: BidiRouteResult | null;
   blockedRoads?: string[];
+  weatherData?: LiveWeatherData | null;
   onSelectNode?: (nodeId: string) => void;
   className?: string;
 }
@@ -21,6 +23,7 @@ export const KolkataFleetMap: React.FC<Props> = ({
   destination,
   routeResult,
   blockedRoads = ['Road_B2'],
+  weatherData,
   onSelectNode,
   className = ''
 }) => {
@@ -395,6 +398,20 @@ export const KolkataFleetMap: React.FC<Props> = ({
             🎯 CENTER
           </button>
         </div>
+
+        {/* Live Adaptive Weather & Road Surface Pill */}
+        {weatherData && (
+          <div 
+            className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-black/85 border backdrop-blur-md shadow-lg pointer-events-auto text-[10px] font-mono"
+            style={{ borderColor: (weatherData.roadImpact.surfaceColor || '#10B981') + '60' }}
+          >
+            <span>{weatherData.conditionIcon}</span>
+            <span className="font-bold text-white">{weatherData.temperatureC}°C · {weatherData.conditionText}</span>
+            <span className="border-l border-white/20 pl-1.5 font-bold" style={{ color: weatherData.roadImpact.surfaceColor }}>
+              {weatherData.roadImpact.surfaceStatusLabel}
+            </span>
+          </div>
+        )}
 
         {/* Real-time Bidirectional A* Live Algorithm Telemetry Card */}
         {routeResult && (

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type * as LeafletType from 'leaflet';
+import { LiveWeatherData } from '../utils/liveWeather';
 
 interface Props {
   worldState?: any;
@@ -11,6 +12,7 @@ interface Props {
   cameraPreset?: string;
   hideInternalOverlays?: boolean;
   onSelectIncident?: (incidentId: string) => void;
+  weatherData?: LiveWeatherData | null;
 }
 
 // Precise Kolkata Landmark Coordinates (WGS84 Lat/Lng)
@@ -73,7 +75,8 @@ export const KolkataLeafletMap: React.FC<Props> = ({
   zoomLevel = 1.0,
   cameraPreset = 'overview',
   hideInternalOverlays = true,
-  onSelectIncident
+  onSelectIncident,
+  weatherData
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletType.Map | null>(null);
@@ -555,6 +558,20 @@ export const KolkataLeafletMap: React.FC<Props> = ({
         >
           {activeTile === 'dark' ? '🛰️ SATELLITE' : (activeTile === 'satellite' ? '🗺️ STREET' : '🕶️ TACTICAL DARK')}
         </button>
+
+        {/* Live Weather & Road Surface Telemetry Pill */}
+        {weatherData && (
+          <div 
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/80 border backdrop-blur-md shadow-lg pointer-events-auto text-[10px] font-mono"
+            style={{ borderColor: (weatherData.roadImpact.surfaceColor || '#10B981') + '60' }}
+          >
+            <span>{weatherData.conditionIcon}</span>
+            <span className="font-bold text-white">{weatherData.temperatureC}°C</span>
+            <span className="border-l border-white/20 pl-1.5 font-bold" style={{ color: weatherData.roadImpact.surfaceColor }}>
+              {weatherData.roadImpact.surfaceStatusLabel.split('·')[0].trim()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Map Scale & Grid Status (Bottom Right) */}

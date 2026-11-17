@@ -6,7 +6,7 @@ import { useRouter } from 'next/router';
 import { 
   Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, 
   ShieldAlert, Sparkles, Shield, Clock, Activity, Check, ExternalLink, Radio, CloudSun,
-  Zap, CornerDownRight, RotateCcw, Layers
+  Zap, CornerDownRight, RotateCcw, Layers, Droplets, Wind, RefreshCw
 } from 'lucide-react';
 import { 
   computeBidirectionalAStar, 
@@ -14,6 +14,11 @@ import {
   BidiRouteResult,
   KOLKATA_EDGES
 } from '../utils/bidirectionalAStar';
+import { 
+  fetchKolkataLiveWeather, 
+  LiveWeatherData, 
+  getSimulatedWeatherScenario 
+} from '../utils/liveWeather';
 
 // Dynamically import Kolkata Leaflet Fleet Map to prevent SSR window issues
 const KolkataFleetMap = dynamic(() => import('../components/KolkataFleetMap'), {
@@ -37,7 +42,39 @@ export default function FleetPage() {
   const [clock, setClock] = useState("");
   const [backendOnline, setBackendOnline] = useState(true);
 
+  // Live Adaptive Weather State
+  const [weatherData, setWeatherData] = useState<LiveWeatherData | null>(null);
+  const [selectedWeatherScenario, setSelectedWeatherScenario] = useState<'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog'>('live');
+  const [isRefreshingWeather, setIsRefreshingWeather] = useState(false);
+
   const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
+
+  // Fetch Live Weather for Kolkata Region
+  const loadKolkataWeather = async (scenario: 'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog' = selectedWeatherScenario) => {
+    setIsRefreshingWeather(true);
+    try {
+      if (scenario === 'live') {
+        const live = await fetchKolkataLiveWeather();
+        setWeatherData(live);
+      } else {
+        const base = await fetchKolkataLiveWeather();
+        const sim = getSimulatedWeatherScenario(scenario);
+        setWeatherData({ ...base, ...sim, roadImpact: sim.roadImpact || base.roadImpact });
+      }
+    } catch (e) {
+      console.error("Weather load error:", e);
+    } finally {
+      setIsRefreshingWeather(false);
+    }
+  };
+
+  useEffect(() => {
+    loadKolkataWeather(selectedWeatherScenario);
+    const interval = setInterval(() => {
+      if (selectedWeatherScenario === 'live') loadKolkataWeather('live');
+    }, 180000);
+    return () => clearInterval(interval);
+  }, [selectedWeatherScenario]);
 
   // Determine origin depot node based on selected vehicle
   const getUnitOrigin = (unitId: string): string => {
@@ -72,14 +109,14 @@ export default function FleetPage() {
       .catch(() => setBackendOnline(false));
   }, []);
 
-  // Compute Bidirectional A* route whenever unit, destination, or roadblocks change
+  // Compute Bidirectional A* route whenever unit, destination, roadblocks, or weather change
   const computeRoute = async () => {
     setLoading(true);
     const origin = getUnitOrigin(selectedUnit);
 
-    // 1. Instant local Bidirectional A* calculation (0ms latency, zero cold-start delay)
+    // 1. Instant local Bidirectional A* calculation with adaptive weather physics
     try {
-      const localResult = computeBidirectionalAStar(origin, destination, blockedRoads);
+      const localResult = computeBidirectionalAStar(origin, destination, blockedRoads, weatherData?.roadImpact);
       setRouteResult(localResult);
     } catch (err) {
       console.error("Local Bidirectional A* calculation error:", err);
@@ -127,7 +164,7 @@ export default function FleetPage() {
   // Recalculate route whenever parameters change
   useEffect(() => {
     computeRoute();
-  }, [selectedUnit, destination, blockedRoads]);
+  }, [selectedUnit, destination, blockedRoads, weatherData]);
 
   // Toggle Roadblock to test dynamic Bidirectional A* rerouting
   const toggleRoadblock = (roadId: string) => {
@@ -273,6 +310,87 @@ export default function FleetPage() {
               </button>
             </div>
 
+            {/* Card: Live Weather & Adaptive Road Impact */}
+            <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base">{weatherData?.conditionIcon || '☁️'}</span>
+                  <span className="text-[11px] font-bold text-white">
+                    {weatherData?.conditionText || 'Live Weather'} · {weatherData?.temperatureC ?? 27.1}°C
+                  </span>
+                </div>
+                <button
+                  onClick={() => loadKolkataWeather(selectedWeatherScenario)}
+                  disabled={isRefreshingWeather}
+                  className="text-[#71717A] hover:text-white transition p-0.5"
+                  title="Refresh live Kolkata weather"
+                >
+                  <RefreshCw size={11} className={isRefreshingWeather ? "animate-spin text-[#3B82F6]" : ""} />
+                </button>
+              </div>
+
+              {/* Surface Status Badge & Traction Gauge */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-[#71717A] uppercase font-bold">Road Surface Grip</span>
+                  <span 
+                    className="font-mono font-bold px-1.5 py-0.5 rounded text-[9px] border"
+                    style={{
+                      color: weatherData?.roadImpact.surfaceColor || '#10B981',
+                      backgroundColor: (weatherData?.roadImpact.surfaceColor || '#10B981') + '15',
+                      borderColor: (weatherData?.roadImpact.surfaceColor || '#10B981') + '35'
+                    }}
+                  >
+                    {weatherData?.roadImpact.surfaceStatusLabel || 'DRY ASPHALT · OPTIMAL'}
+                  </span>
+                </div>
+
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#27272A]">
+                  <div 
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${weatherData?.roadImpact.tractionPct || 96}%`,
+                      backgroundColor: weatherData?.roadImpact.surfaceColor || '#10B981'
+                    }} 
+                  />
+                </div>
+
+                <div className="flex justify-between text-[9px] font-mono text-[#71717A]">
+                  <span>Traction: <b className="text-white">{weatherData?.roadImpact.tractionPct ?? 96}%</b></span>
+                  <span>Safe Speed: <b className="text-white">{weatherData?.roadImpact.speedPenaltyPct ? `-${weatherData.roadImpact.speedPenaltyPct}%` : 'Nominal'}</b></span>
+                  <span>Braking: <b className="text-white">{weatherData?.roadImpact.brakingDistanceMult ?? 1.0}x</b></span>
+                </div>
+              </div>
+
+              {/* Weather Drill Simulator Selector */}
+              <div className="pt-2 border-t border-[#27272A]/70">
+                <span className="text-[8px] uppercase font-bold text-[#71717A] tracking-wider block mb-1.5">
+                  Weather Drill Simulator
+                </span>
+                <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                  {[
+                    { id: 'live', label: '🛰️ Live', title: 'Real-Time Open-Meteo Kolkata Telemetry' },
+                    { id: 'monsoon_rain', label: '🌧️ Rain', title: 'Simulate Heavy Monsoon Rainfall' },
+                    { id: 'cyclone_storm', label: '⛈️ Storm', title: 'Simulate Severe Cyclone Gale & Flood Risk' },
+                    { id: 'river_fog', label: '🌫️ Fog', title: 'Simulate Dense Hooghly River Fog' }
+                  ].map((sc) => (
+                    <button
+                      key={sc.id}
+                      onClick={() => setSelectedWeatherScenario(sc.id as any)}
+                      className={`py-1 px-1 rounded-md text-center font-bold border transition truncate ${
+                        selectedWeatherScenario === sc.id
+                          ? "bg-[#3B82F6] text-white border-[#3B82F6] shadow-sm"
+                          : "bg-[#17171B] text-[#A1A1AA] border-[#27272A] hover:text-white"
+                      }`}
+                      title={sc.title}
+                    >
+                      {sc.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Card 2: Dynamic Hazard Roadblocks Switcher */}
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
@@ -394,7 +512,9 @@ export default function FleetPage() {
                   <div className="mono text-2xl font-bold text-[#F59E0B] mt-0.5">
                     {routeResult?.etaMinutes ?? "--"} <span className="text-xs text-[#A1A1AA]">MINS</span>
                   </div>
-                  <span className="text-[9px] text-[#71717A] mt-0.5 block">@ 42 km/h emergency priority</span>
+                  <span className="text-[9px] text-[#71717A] mt-0.5 block truncate">
+                    {routeResult?.weatherTelemetry?.speedPenaltyPct ? `Weather: -${routeResult.weatherTelemetry.speedPenaltyPct}% Speed` : '@ 42 km/h priority'}
+                  </span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-[#17171B] border border-[#27272A]">
@@ -409,13 +529,14 @@ export default function FleetPage() {
 
                 <div className="p-3 rounded-xl bg-[#17171B] border border-[#27272A]">
                   <span className="text-[9px] uppercase font-bold text-[#71717A] tracking-wider block">
-                    Fuel Consumption
+                    Road Surface Traction
                   </span>
-                  <div className="mono text-2xl font-bold text-white mt-0.5 flex items-center gap-1">
-                    <Fuel size={16} className="text-[#3B82F6]" />
-                    <span>~{routeResult ? Math.max(1, Math.round(routeResult.distanceKm * 0.35)) : 2} <span className="text-xs text-[#A1A1AA]">L</span></span>
+                  <div className="mono text-2xl font-bold mt-0.5" style={{ color: weatherData?.roadImpact.surfaceColor || '#10B981' }}>
+                    {weatherData?.roadImpact.tractionPct ?? 96}<span className="text-xs text-[#A1A1AA]">% GRIP</span>
                   </div>
-                  <span className="text-[9px] text-[#71717A] mt-0.5 block">Remaining: 76 mins</span>
+                  <span className="text-[9px] text-[#71717A] mt-0.5 block truncate">
+                    Braking: {weatherData?.roadImpact.brakingDistanceMult ?? 1.0}x buffer
+                  </span>
                 </div>
               </div>
             </div>
@@ -427,6 +548,7 @@ export default function FleetPage() {
                 destination={destination}
                 routeResult={routeResult}
                 blockedRoads={blockedRoads}
+                weatherData={weatherData}
                 onSelectNode={(nodeId) => setDestination(nodeId)}
               />
             </div>

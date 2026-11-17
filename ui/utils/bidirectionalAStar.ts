@@ -41,6 +41,12 @@ export interface BidiRouteResult {
     meetingNode: string;
     searchTimeMs: number;
   };
+  weatherTelemetry?: {
+    surfaceStatus: string;
+    frictionCoefficient: number;
+    effectiveSpeedKmh: number;
+    speedPenaltyPct: number;
+  };
   status: 'CLEAR' | 'EMERGENCY_DETOUR' | 'ARRIVED';
 }
 
@@ -525,7 +531,13 @@ class PriorityQueue<T> {
 export function computeBidirectionalAStar(
   originId: string,
   destinationId: string,
-  blockedRoads: string[] = []
+  blockedRoads: string[] = [],
+  weatherImpact?: {
+    frictionCoefficient?: number;
+    speedPenaltyPct?: number;
+    surfaceStatusLabel?: string;
+    waterloggingRisk?: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  }
 ): BidiRouteResult {
   const t0 = performance.now();
   const start = normalizeKolkataNodeId(originId);
@@ -582,7 +594,14 @@ export function computeBidirectionalAStar(
     if (!nFrom || !nTo) continue;
 
     // True road distance with curvature
-    const dist = calculateHaversineKm(nFrom.lat, nFrom.lng, nTo.lat, nTo.lng) * 1.15;
+    let dist = calculateHaversineKm(nFrom.lat, nFrom.lng, nTo.lat, nTo.lng) * 1.15;
+
+    // Adaptive weather impedance: penalize flood-prone low-lying corridors during heavy rain/monsoon
+    if (weatherImpact && (weatherImpact.waterloggingRisk === 'HIGH' || weatherImpact.waterloggingRisk === 'CRITICAL')) {
+      if (['Road_D4', 'Road_C3'].includes(edge.roadId)) {
+        dist *= 1.35; // 35% time & friction penalty for flood-prone road segments
+      }
+    }
 
     adj[edge.from].push({
       neighbor: edge.to,
@@ -800,8 +819,10 @@ export function computeBidirectionalAStar(
     }
   }
 
-  // Average tactical emergency speed in Kolkata traffic: 42 km/h with sirens
-  const etaMinutes = (mu / 42.0) * 60.0;
+  // Tactical emergency speed in Kolkata traffic: 42 km/h base, dynamically reduced by weather friction
+  const speedPenalty = weatherImpact?.speedPenaltyPct ?? 0;
+  const effectiveSpeedKmh = Math.max(20, 42.0 * (1 - speedPenalty / 100));
+  const etaMinutes = (mu / effectiveSpeedKmh) * 60.0;
 
   return {
     origin: start,
@@ -820,6 +841,12 @@ export function computeBidirectionalAStar(
       totalNodesExpanded: expandedForward + expandedBackward,
       meetingNode: meetingNode,
       searchTimeMs: Math.round(elapsed * 100) / 100
+    },
+    weatherTelemetry: {
+      surfaceStatus: weatherImpact?.surfaceStatusLabel ?? 'DRY ASPHALT · OPTIMAL TRACTION',
+      frictionCoefficient: weatherImpact?.frictionCoefficient ?? 0.96,
+      effectiveSpeedKmh: Math.round(effectiveSpeedKmh * 10) / 10,
+      speedPenaltyPct: speedPenalty
     },
     status: "CLEAR"
   };
