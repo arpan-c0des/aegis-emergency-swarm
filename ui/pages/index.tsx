@@ -10,6 +10,8 @@ import {
   Droplets, Thermometer, RefreshCw, Gauge, AlertCircle
 } from 'lucide-react';
 import { fetchKolkataLiveWeather, LiveWeatherData, getSimulatedWeatherScenario } from '../utils/liveWeather';
+import { useAuth } from '../contexts/AuthContext';
+import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -94,6 +96,7 @@ function ToggleSwitch({ on, onChange, label }: { on: boolean; onChange: (val: bo
 
 export default function AegisTacticalCommandConsole() {
   const router = useRouter();
+  const { user, openSecurityModal } = useAuth();
 
   // Core Tactical States
   const [worldState, setWorldState] = useState<any>(null);
@@ -735,43 +738,8 @@ export default function AegisTacticalCommandConsole() {
             <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
           </button>
 
-          {/* User Profile Button */}
-          <button 
-            onClick={() => setProfileOpen(!profileOpen)}
-            aria-expanded={profileOpen}
-            className="flex items-center gap-2 rounded-lg border border-[#27272A] bg-[#131316] py-1 pl-1 pr-2 hover:border-[#3F3F46] transition shrink-0"
-          >
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-[#3B82F6] text-[11px] font-bold text-white">AR</span>
-            <span className="hidden xl:block text-left leading-none">
-              <span className="block text-[11px] font-semibold">A. Rao</span>
-              <span className="block text-[9px] text-[#A1A1AA] mt-0.5">Incident Commander</span>
-            </span>
-            <ChevronDown size={12} className={`text-[#71717A] transition ${profileOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {/* Profile Dropdown Modal */}
-          {profileOpen && (
-            <div className="absolute right-2 top-[56px] z-50 w-[240px] rounded-xl border border-[#27272A] bg-[#131316] p-3 shadow-2xl sm:right-4">
-              <p className="text-[13px] font-bold">A. Rao</p>
-              <p className="mt-0.5 text-[11px] text-[#A1A1AA]">Incident Commander · Sector Operations</p>
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-[#17171B] px-2.5 py-2 text-[12px]">
-                <span>Status</span>
-                <span className="flex items-center gap-2">
-                  <span className={isOnDuty ? "text-[#10B981] font-semibold" : "text-[#A1A1AA]"}>
-                    {isOnDuty ? "On duty" : "Off duty"}
-                  </span>
-                  <ToggleSwitch on={isOnDuty} onChange={setIsOnDuty} label="Toggle duty status" />
-                </span>
-              </div>
-              <p className="mt-2 text-[10px] text-[#71717A]">Shift started 06:00 · Handover at 18:00</p>
-              <button 
-                onClick={() => setProfileOpen(false)}
-                className="mt-3 w-full rounded-lg border border-[#27272A] bg-[#17171B] py-2 text-[11px] font-bold hover:border-[#3F3F46] transition"
-              >
-                CLOSE PROFILE
-              </button>
-            </div>
-          )}
+          {/* Tactical Auth & Identity Badge with Field Driver Launcher */}
+          <TacticalAuthBadge showDriverLauncher={true} />
         </div>
       </header>
 

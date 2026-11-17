@@ -6,7 +6,7 @@ import { useRouter } from 'next/router';
 import { 
   Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, 
   ShieldAlert, Sparkles, Shield, Clock, Activity, Check, ExternalLink, Radio, CloudSun,
-  Zap, CornerDownRight, RotateCcw, Layers, Droplets, Wind, RefreshCw
+  Zap, CornerDownRight, RotateCcw, Layers, Droplets, Wind, RefreshCw, Lock, Volume2, Siren, Flame, Ambulance
 } from 'lucide-react';
 import { 
   computeBidirectionalAStar, 
@@ -19,6 +19,9 @@ import {
   LiveWeatherData, 
   getSimulatedWeatherScenario 
 } from '../utils/liveWeather';
+import { useAuth } from '../contexts/AuthContext';
+import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
+import { ROLE_CONFIGS, UserRole } from '../utils/auth';
 
 // Dynamically import Kolkata Leaflet Fleet Map to prevent SSR window issues
 const KolkataFleetMap = dynamic(() => import('../components/KolkataFleetMap'), {
@@ -33,21 +36,51 @@ const KolkataFleetMap = dynamic(() => import('../components/KolkataFleetMap'), {
 
 export default function FleetPage() {
   const router = useRouter();
-  const [selectedUnit, setSelectedUnit] = useState("AMB-07");
-  const [destination, setDestination] = useState("H1_Central");
-  const [blockedRoads, setBlockedRoads] = useState<string[]>(["Road_B2"]);
+  const { user } = useAuth();
+
+  // Detect Driver Mode either from logged-in user role or URL query parameter
+  const driverQuery = router.query.driver as string | undefined;
+  
+  const activeDriverRole: 'driver_police' | 'driver_fire' | 'driver_ambulance' | null = useMemo(() => {
+    if (user?.role === 'driver_police' || driverQuery === 'police') return 'driver_police';
+    if (user?.role === 'driver_fire' || driverQuery === 'fire') return 'driver_fire';
+    if (user?.role === 'driver_ambulance' || driverQuery === 'ambulance') return 'driver_ambulance';
+    return null;
+  }, [user?.role, driverQuery]);
+
+  const isDriverMode = Boolean(activeDriverRole);
+
+  // Default unit assignment based on driver role
+  const lockedUnitForDriver = useMemo(() => {
+    if (activeDriverRole === 'driver_police') return 'POL-02';
+    if (activeDriverRole === 'driver_fire') return 'FIRE-03';
+    if (activeDriverRole === 'driver_ambulance') return 'AMB-07';
+    return 'AMB-07';
+  }, [activeDriverRole]);
+
+  const [selectedUnit, setSelectedUnit] = useState<string>(lockedUnitForDriver);
+  const [destination, setDestination] = useState<string>('H1_Central');
+  const [blockedRoads, setBlockedRoads] = useState<string[]>(['Road_B2']);
   const [routeResult, setRouteResult] = useState<BidiRouteResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [fleetUnits, setFleetUnits] = useState<any>({});
-  const [clock, setClock] = useState("");
+  const [clock, setClock] = useState('');
   const [backendOnline, setBackendOnline] = useState(true);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // Keep selectedUnit synchronized if driver mode is active
+  useEffect(() => {
+    if (isDriverMode) {
+      setSelectedUnit(lockedUnitForDriver);
+    }
+  }, [isDriverMode, lockedUnitForDriver]);
 
   // Live Adaptive Weather State
   const [weatherData, setWeatherData] = useState<LiveWeatherData | null>(null);
   const [selectedWeatherScenario, setSelectedWeatherScenario] = useState<'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog'>('live');
   const [isRefreshingWeather, setIsRefreshingWeather] = useState(false);
 
-  const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
+  const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
 
   // Fetch Live Weather for Kolkata Region
   const loadKolkataWeather = async (scenario: 'live' | 'monsoon_rain' | 'cyclone_storm' | 'river_fog' = selectedWeatherScenario) => {
@@ -62,7 +95,7 @@ export default function FleetPage() {
         setWeatherData({ ...base, ...sim, roadImpact: sim.roadImpact || base.roadImpact });
       }
     } catch (e) {
-      console.error("Weather load error:", e);
+      console.error('Weather load error:', e);
     } finally {
       setIsRefreshingWeather(false);
     }
@@ -78,17 +111,17 @@ export default function FleetPage() {
 
   // Determine origin depot node based on selected vehicle
   const getUnitOrigin = (unitId: string): string => {
-    if (unitId === "AMB-12" || unitId === "POL-02") {
-      return "Station_South"; // Alipore Command Depot
+    if (unitId === 'AMB-12' || unitId === 'POL-02') {
+      return 'Station_South'; // Alipore Command Depot
     }
-    return "Station_North";   // Shyambazar Command Depot
+    return 'Station_North';   // Shyambazar Command Depot
   };
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setClock(new Date().toLocaleTimeString("en-GB"));
+      setClock(new Date().toLocaleTimeString('en-GB'));
     }, 1000);
-    setClock(new Date().toLocaleTimeString("en-GB"));
+    setClock(new Date().toLocaleTimeString('en-GB'));
     return () => clearInterval(timer);
   }, []);
 
@@ -100,7 +133,7 @@ export default function FleetPage() {
         if (data.units) setFleetUnits(data.units);
         if (data.roads) {
           const blocked = Object.entries(data.roads)
-            .filter(([_, status]) => status === "blocked")
+            .filter(([_, status]) => status === 'blocked')
             .map(([roadId]) => roadId);
           if (blocked.length > 0) setBlockedRoads(blocked);
         }
@@ -112,27 +145,27 @@ export default function FleetPage() {
   // Compute Bidirectional A* route whenever unit, destination, roadblocks, or weather change
   const computeRoute = async () => {
     setLoading(true);
-    const origin = getUnitOrigin(selectedUnit);
+    const effectiveUnit = isDriverMode ? lockedUnitForDriver : selectedUnit;
+    const origin = getUnitOrigin(effectiveUnit);
 
     // 1. Instant local Bidirectional A* calculation with adaptive weather physics
     try {
       const localResult = computeBidirectionalAStar(origin, destination, blockedRoads, weatherData?.roadImpact);
       setRouteResult(localResult);
     } catch (err) {
-      console.error("Local Bidirectional A* calculation error:", err);
+      console.error('Local Bidirectional A* calculation error:', err);
     }
 
     // 2. Concurrently reconcile with backend /api/fleet/route
     try {
       const res = await fetch(`${BACKEND_URL}/api/fleet/route`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unit_id: selectedUnit, destination: destination })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit_id: effectiveUnit, destination: destination })
       });
       if (res.ok) {
         const data = await res.json();
         if (data.routing) {
-          // If server returned coordinates and metrics, synchronize
           if (data.routing.distance_km !== undefined) {
             setRouteResult((prev) => {
               if (!prev) return prev;
@@ -152,85 +185,191 @@ export default function FleetPage() {
             });
           }
         }
-        setBackendOnline(true);
       }
     } catch (e) {
-      // Backend unavailable; local computation remains seamlessly active
+      // Backend offline fallback handled gracefully
     } finally {
       setLoading(false);
     }
   };
 
-  // Recalculate route whenever parameters change
   useEffect(() => {
     computeRoute();
-  }, [selectedUnit, destination, blockedRoads, weatherData]);
+  }, [selectedUnit, destination, blockedRoads, weatherData?.roadImpact, lockedUnitForDriver, isDriverMode]);
 
-  // Toggle Roadblock to test dynamic Bidirectional A* rerouting
+  // Toggle road blockage (Restricted to non-drivers)
   const toggleRoadblock = (roadId: string) => {
+    if (isDriverMode) return; // Drivers cannot toggle roadblocks
     setBlockedRoads((prev) => 
       prev.includes(roadId) ? prev.filter((r) => r !== roadId) : [...prev, roadId]
     );
   };
 
+  // Play synthetic or dynamic voice dispatch instruction
+  const handlePlayVoiceInstructions = () => {
+    if (typeof window === 'undefined') return;
+    setIsPlayingAudio(true);
+
+    const destNode = KOLKATA_FLEET_NODES[destination];
+    const destName = destNode ? destNode.name.split('(')[0].trim() : destination;
+    
+    let speechText = '';
+    if (activeDriverRole === 'driver_police') {
+      speechText = `Attention Police Interceptor 0 2. Dispatch directive: Clear priority arterial corridor to ${destName}. Distance ${routeResult?.distanceKm || '9'} kilometers. Maintain high visibility siren escort.`;
+    } else if (activeDriverRole === 'driver_fire') {
+      speechText = `Attention Fire Engine 0 3. Dispatch directive: Proceed immediately to ${destName}. Distance ${routeResult?.distanceKm || '11'} kilometers. Establish water supply and cooling perimeter on arrival.`;
+    } else {
+      speechText = `Attention Paramedic Ambulance 0 7. Dispatch directive: Expedite trauma transport to ${destName}. Distance ${routeResult?.distanceKm || '8'} kilometers. SSKM and Apollo trauma bays alerted.`;
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(speechText);
+      utterance.rate = 1.05;
+      utterance.pitch = 0.95;
+      utterance.onend = () => setIsPlayingAudio(false);
+      utterance.onerror = () => setIsPlayingAudio(false);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => setIsPlayingAudio(false), 2000);
+    }
+  };
+
+  // Tailored Tactical Instructions for Driver Cockpits
+  const driverInstructions = useMemo(() => {
+    const destNode = KOLKATA_FLEET_NODES[destination];
+    const destName = destNode ? destNode.name.split('(')[0].trim() : destination;
+
+    if (activeDriverRole === 'driver_police') {
+      return {
+        unitTag: 'POL-02 · RAPID INTERCEPTOR',
+        badgeColor: '#6366F1',
+        icon: '🚓',
+        orders: [
+          `Maintain primary siren corridor toward ${destName}.`,
+          `Reroute civilian traffic away from ${blockedRoads.join(', ') || 'congested sectors'}.`,
+          `Coordinate with Lalbazar Traffic Police HQ at B.B.D. Bagh intersection.`,
+          `Verify clear lane passage for following heavy fire and trauma units.`
+        ],
+        caution: 'High-speed interceptor mode active. Monitor wet asphalt surface traction.'
+      };
+    }
+    if (activeDriverRole === 'driver_fire') {
+      return {
+        unitTag: 'FIRE-03 · HEAVY PUMPER ENGINE',
+        badgeColor: '#EF4444',
+        icon: '🚒',
+        orders: [
+          `Proceed with 4,000-liter water tender toward ${destName}.`,
+          `Avoid low-clearance pedestrian overpasses near Strand Road.`,
+          `Stand by for thermal suppression and perimeter gas isolation.`,
+          `Hook up to primary hydrant manifold upon staging at target coordinate.`
+        ],
+        caution: 'Heavy vehicle inertia. Maintain extra braking distance on wet road segments.'
+      };
+    }
+    return {
+      unitTag: 'AMB-07 · ADVANCED LIFE SUPPORT',
+      badgeColor: '#EC4899',
+      icon: '🚑',
+      orders: [
+        `Transport critical triage cases directly to ${destName}.`,
+        `Direct priority green wave requested across AJC Bose Road Flyover.`,
+        `Transmit patient vitals to SSKM Trauma Bay (H1) and Apollo Clinic (H2).`,
+        `Bypass ground waterlogging via elevated Maa Flyover ramps if directed.`
+      ],
+      caution: 'Patient stability priority. Smooth braking curves required in rain.'
+    };
+  }, [activeDriverRole, destination, blockedRoads]);
+
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col justify-between selection:bg-[#3B82F6]/30">
+    <div className="min-h-screen bg-[#09090B] text-white flex flex-col font-sans selection:bg-[#3B82F6]/30">
       <Head>
-        <title>AEGIS Fleet — Kolkata Emergency Uber & Bidirectional A*</title>
-        <meta name="description" content="AEGIS Autonomous Fleet Dispatch & Real Road Shortest Distance via Bidirectional A* on Kolkata Map" />
+        <title>
+          {isDriverMode 
+            ? `${ROLE_CONFIGS[activeDriverRole!].shortTitle} Cockpit | Aegis Kolkata Fleet` 
+            : 'Fleet Uber Kolkata | Bidirectional A* Emergency Routing'}
+        </title>
+        <meta name="description" content="Kolkata tactical emergency fleet routing with Bidirectional A* shortest road distance" />
       </Head>
 
-      {/* Top Navigation Header */}
-      <header className="relative h-14 shrink-0 border-b border-[#27272A] bg-[#0D0D10]/95 flex items-center justify-between px-3 sm:px-5 z-40 backdrop-blur-md">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-[#3B82F6] text-white shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.35)]">
-            <Truck size={18} strokeWidth={2.4} />
+      {/* Tactical Top Header Bar */}
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-[#27272A] bg-[#0E0E11]/90 px-3 sm:px-6 backdrop-blur-md">
+        
+        {/* Brand & Sector Header */}
+        <div className="flex items-center gap-3">
+          <div 
+            className="flex h-9 w-9 items-center justify-center rounded-xl border"
+            style={{
+              backgroundColor: isDriverMode ? `${driverInstructions.badgeColor}20` : '#3B82F615',
+              borderColor: isDriverMode ? `${driverInstructions.badgeColor}50` : '#3B82F640',
+              color: isDriverMode ? driverInstructions.badgeColor : '#3B82F6'
+            }}
+          >
+            {isDriverMode ? (
+              <span className="text-lg">{driverInstructions.icon}</span>
+            ) : (
+              <Truck size={18} />
+            )}
           </div>
-          <div className="leading-none">
-            <div className="font-bold tracking-[0.18em] text-[15px] sm:text-[16px] text-white flex items-center gap-1.5">
-              <span>AEGIS FLEET</span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/30">
-                KOLKATA SECTOR
+          <div>
+            <div className="font-bold tracking-[0.16em] text-[14px] sm:text-[15px] text-white flex items-center gap-1.5">
+              <span>{isDriverMode ? driverInstructions.unitTag : 'AEGIS FLEET UBER'}</span>
+              <span 
+                className="text-[9px] px-1.5 py-0.5 rounded border font-mono font-bold"
+                style={{
+                  backgroundColor: isDriverMode ? `${driverInstructions.badgeColor}20` : '#3B82F620',
+                  color: isDriverMode ? driverInstructions.badgeColor : '#60A5FA',
+                  borderColor: isDriverMode ? `${driverInstructions.badgeColor}40` : '#3B82F630'
+                }}
+              >
+                {isDriverMode ? 'FIELD COCKPIT' : 'KOLKATA SECTOR'}
               </span>
             </div>
-            <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap">
-              Tactical Emergency Uber • Bidirectional A* Real Road Routing
+            <div className="text-[10px] text-[#A1A1AA] hidden sm:block">
+              {isDriverMode 
+                ? 'Field Driver Display • Vehicle Locked by Dispatch • Destination Authority Active'
+                : 'Tactical Emergency Uber • Bidirectional A* Real Road Routing'}
             </div>
           </div>
         </div>
 
-        {/* Global Navigation Tabs */}
-        <div className="flex items-center gap-1.5 font-mono">
-          <Link 
-            href="/"
-            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
-          >
-            [01] C2 Swarm
-          </Link>
-          <Link 
-            href="/fleet"
-            className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-[#3B82F6] text-white shadow-sm"
-          >
-            [02] Fleet Uber
-          </Link>
-          <Link 
-            href="/hospitals"
-            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
-          >
-            [03] Bed Intake
-          </Link>
-        </div>
+        {/* Global Navigation Tabs (Filtered for non-command roles) */}
+        {!isDriverMode && (
+          <div className="hidden md:flex items-center gap-1.5 font-mono">
+            {(!user || user.role === 'incident_commander') && (
+              <Link 
+                href="/"
+                className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+              >
+                [01] C2 Swarm
+              </Link>
+            )}
+            <Link 
+              href="/fleet"
+              className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-[#3B82F6] text-white shadow-sm"
+            >
+              [02] Fleet Uber
+            </Link>
+            {(!user || user.role === 'incident_commander' || user.role === 'hospital_staff') && (
+              <Link 
+                href="/hospitals"
+                className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+              >
+                [03] Bed Intake
+              </Link>
+            )}
+          </div>
+        )}
 
-        {/* Clock & Online Telemetry */}
-        <div className="hidden sm:flex items-center gap-2">
-          <div className="text-right leading-none pr-1">
-            <div className="mono text-[13px] font-semibold text-white">{clock || "14:35:12"}</div>
+        {/* Auth Badge, Clock & Field Launcher */}
+        <div className="flex items-center gap-3">
+          <div className="hidden lg:block text-right leading-none pr-1">
+            <div className="mono text-[12px] font-semibold text-white">{clock || '14:35:12'}</div>
             <div className="text-[9px] text-[#71717A] mt-0.5">KOLKATA • IST</div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 px-2.5 py-1 text-[10px] font-bold">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] live-dot" />
-            BIDI-A* ENGINE LIVE
-          </span>
+
+          <TacticalAuthBadge showDriverLauncher={!isDriverMode} />
         </div>
       </header>
 
@@ -247,42 +386,82 @@ export default function FleetPage() {
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 sm:p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
                 <div>
-                  <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">TACTICAL DISPATCH CONTROLS</p>
-                  <h2 className="text-[14px] font-bold text-white mt-0.5">Emergency Unit & Target</h2>
+                  <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">
+                    {isDriverMode ? 'FIELD NAVIGATION DIRECTIVE' : 'TACTICAL DISPATCH CONTROLS'}
+                  </p>
+                  <h2 className="text-[14px] font-bold text-white mt-0.5">
+                    {isDriverMode ? 'Assigned Vehicle & Destination' : 'Emergency Unit & Target'}
+                  </h2>
                 </div>
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#3B82F6]/15 text-[#3B82F6]">
                   <Navigation size={16} />
                 </span>
               </div>
 
-              {/* Select Responding Unit */}
+              {/* Select Responding Unit (LOCKED FOR FIELD DRIVERS) */}
               <div>
-                <label className="text-[10px] uppercase font-bold text-[#A1A1AA] block mb-1.5">
-                  Select Responding Emergency Unit
-                </label>
-                <select 
-                  value={selectedUnit} 
-                  onChange={(e) => setSelectedUnit(e.target.value)}
-                  className="w-full rounded-xl bg-[#17171B] border border-[#27272A] p-2.5 text-[12px] font-semibold text-white outline-none focus:border-[#3B82F6] transition"
-                >
-                  <option value="AMB-07">🚑 AMB-07 (Paramedic Ambulance · Shyambazar Depot North)</option>
-                  <option value="AMB-12">🚑 AMB-12 (Critical Trauma Transport · Alipore Depot South)</option>
-                  <option value="FIRE-03">🚒 FIRE-03 (Pumper Engine · Shyambazar Depot North)</option>
-                  <option value="POL-02">🚓 POL-02 (Rapid Interceptor · Alipore Depot South)</option>
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] uppercase font-bold text-[#A1A1AA]">
+                    Responding Emergency Unit
+                  </label>
+                  {isDriverMode && (
+                    <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-[#F59E0B] px-1.5 py-0.5 rounded bg-[#F59E0B]/10 border border-[#F59E0B]/30">
+                      <Lock size={10} />
+                      <span>LOCKED TO OPERATOR</span>
+                    </span>
+                  )}
+                </div>
+
+                {isDriverMode ? (
+                  /* Read-only locked badge for driver */
+                  <div className="w-full rounded-xl bg-[#18181D] border border-[#3F3F46] p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{driverInstructions.icon}</span>
+                      <div>
+                        <div className="text-xs font-bold text-white">
+                          {lockedUnitForDriver} · {driverInstructions.unitTag.split('·')[1]?.trim()}
+                        </div>
+                        <div className="text-[10px] text-[#A1A1AA]">
+                          Depot: {getUnitOrigin(lockedUnitForDriver) === 'Station_North' ? 'Shyambazar (North)' : 'Alipore (South)'}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono text-[#10B981] font-bold">ONLINE</span>
+                  </div>
+                ) : (
+                  /* Full dropdown for Commander / Fleet Operator */
+                  <select 
+                    value={selectedUnit} 
+                    onChange={(e) => setSelectedUnit(e.target.value)}
+                    className="w-full rounded-xl bg-[#17171B] border border-[#27272A] p-2.5 text-[12px] font-semibold text-white outline-none focus:border-[#3B82F6] transition"
+                  >
+                    <option value="AMB-07">🚑 AMB-07 (Paramedic Ambulance · Shyambazar Depot North)</option>
+                    <option value="AMB-12">🚑 AMB-12 (Critical Trauma Transport · Alipore Depot South)</option>
+                    <option value="FIRE-03">🚒 FIRE-03 (Pumper Engine · Shyambazar Depot North)</option>
+                    <option value="POL-02">🚓 POL-02 (Rapid Interceptor · Alipore Depot South)</option>
+                  </select>
+                )}
+
                 <div className="mt-1 text-[10px] text-[#71717A] flex items-center justify-between">
-                  <span>Origin Depot:</span>
+                  <span>Origin Depot Node:</span>
                   <span className="text-[#3B82F6] font-mono font-bold">
-                    {getUnitOrigin(selectedUnit) === "Station_North" ? "Shyambazar (North)" : "Alipore (South)"}
+                    {getUnitOrigin(isDriverMode ? lockedUnitForDriver : selectedUnit) === 'Station_North' ? 'Shyambazar (North Depot)' : 'Alipore (South Depot)'}
                   </span>
                 </div>
               </div>
 
-              {/* Select Target Destination */}
+              {/* Select Target Destination (ACTIVE FOR EVERYONE INCLUDING DRIVERS!) */}
               <div>
-                <label className="text-[10px] uppercase font-bold text-[#A1A1AA] block mb-1.5">
-                  Target Destination Landmark
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] uppercase font-bold text-[#A1A1AA]">
+                    Target Destination Landmark
+                  </label>
+                  {isDriverMode && (
+                    <span className="text-[9px] font-mono text-[#10B981] font-bold">
+                      DRIVER AUTHORIZED TO CHANGE
+                    </span>
+                  )}
+                </div>
                 <select 
                   value={destination} 
                   onChange={(e) => setDestination(e.target.value)}
@@ -310,6 +489,48 @@ export default function FleetPage() {
               </button>
             </div>
 
+            {/* Field Driver Specialized Instructions Panel */}
+            {isDriverMode && (
+              <div 
+                className="rounded-2xl border p-4 shadow-sm space-y-3"
+                style={{
+                  backgroundColor: `${driverInstructions.badgeColor}0D`,
+                  borderColor: `${driverInstructions.badgeColor}40`
+                }}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <Radio size={14} style={{ color: driverInstructions.badgeColor }} className="animate-pulse" />
+                    <span className="text-xs font-bold text-white">LIVE DISPATCH INSTRUCTIONS</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePlayVoiceInstructions}
+                    disabled={isPlayingAudio}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold text-white transition active:scale-95"
+                    style={{ backgroundColor: driverInstructions.badgeColor }}
+                  >
+                    <Volume2 size={12} className={isPlayingAudio ? 'animate-bounce' : ''} />
+                    <span>{isPlayingAudio ? 'BROADCASTING…' : 'VOICE ORDER'}</span>
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {driverInstructions.orders.map((order, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px] text-[#E4E4E7]">
+                      <span className="text-[#A1A1AA] font-mono shrink-0">0{i + 1}.</span>
+                      <span>{order}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 border-t border-white/10 text-[10px] font-mono text-[#F59E0B] flex items-center gap-1.5">
+                  <AlertTriangle size={12} className="shrink-0" />
+                  <span>{driverInstructions.caution}</span>
+                </div>
+              </div>
+            )}
+
             {/* Card: Live Weather & Adaptive Road Impact */}
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
@@ -319,14 +540,16 @@ export default function FleetPage() {
                     {weatherData?.conditionText || 'Live Weather'} · {weatherData?.temperatureC ?? 27.1}°C
                   </span>
                 </div>
-                <button
-                  onClick={() => loadKolkataWeather(selectedWeatherScenario)}
-                  disabled={isRefreshingWeather}
-                  className="text-[#71717A] hover:text-white transition p-0.5"
-                  title="Refresh live Kolkata weather"
-                >
-                  <RefreshCw size={11} className={isRefreshingWeather ? "animate-spin text-[#3B82F6]" : ""} />
-                </button>
+                {!isDriverMode && (
+                  <button
+                    onClick={() => loadKolkataWeather(selectedWeatherScenario)}
+                    disabled={isRefreshingWeather}
+                    className="text-[#71717A] hover:text-white transition p-0.5"
+                    title="Refresh live Kolkata weather"
+                  >
+                    <RefreshCw size={11} className={isRefreshingWeather ? "animate-spin text-[#3B82F6]" : ""} />
+                  </button>
+                )}
               </div>
 
               {/* Surface Status Badge & Traction Gauge */}
@@ -362,33 +585,39 @@ export default function FleetPage() {
                 </div>
               </div>
 
-              {/* Weather Drill Simulator Selector */}
-              <div className="pt-2 border-t border-[#27272A]/70">
-                <span className="text-[8px] uppercase font-bold text-[#71717A] tracking-wider block mb-1.5">
-                  Weather Drill Simulator
-                </span>
-                <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
-                  {[
-                    { id: 'live', label: '🛰️ Live', title: 'Real-Time Open-Meteo Kolkata Telemetry' },
-                    { id: 'monsoon_rain', label: '🌧️ Rain', title: 'Simulate Heavy Monsoon Rainfall' },
-                    { id: 'cyclone_storm', label: '⛈️ Storm', title: 'Simulate Severe Cyclone Gale & Flood Risk' },
-                    { id: 'river_fog', label: '🌫️ Fog', title: 'Simulate Dense Hooghly River Fog' }
-                  ].map((sc) => (
-                    <button
-                      key={sc.id}
-                      onClick={() => setSelectedWeatherScenario(sc.id as any)}
-                      className={`py-1 px-1 rounded-md text-center font-bold border transition truncate ${
-                        selectedWeatherScenario === sc.id
-                          ? "bg-[#3B82F6] text-white border-[#3B82F6] shadow-sm"
-                          : "bg-[#17171B] text-[#A1A1AA] border-[#27272A] hover:text-white"
-                      }`}
-                      title={sc.title}
-                    >
-                      {sc.label}
-                    </button>
-                  ))}
+              {/* Weather Drill Simulator Selector (OPERATOR ONLY) */}
+              {!isDriverMode ? (
+                <div className="pt-2 border-t border-[#27272A]/70">
+                  <span className="text-[8px] uppercase font-bold text-[#71717A] tracking-wider block mb-1.5">
+                    Weather Drill Simulator
+                  </span>
+                  <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                    {[
+                      { id: 'live', label: '🛰️ Live', title: 'Real-Time Open-Meteo Kolkata Telemetry' },
+                      { id: 'monsoon_rain', label: '🌧️ Rain', title: 'Simulate Heavy Monsoon Rainfall' },
+                      { id: 'cyclone_storm', label: '⛈️ Storm', title: 'Simulate Severe Cyclone Gale & Flood Risk' },
+                      { id: 'river_fog', label: '🌫️ Fog', title: 'Simulate Dense Hooghly River Fog' }
+                    ].map((sc) => (
+                      <button
+                        key={sc.id}
+                        onClick={() => setSelectedWeatherScenario(sc.id as any)}
+                        className={`py-1 px-1 rounded-md text-center font-bold border transition truncate ${
+                          selectedWeatherScenario === sc.id
+                            ? "bg-[#3B82F6] text-white border-[#3B82F6] shadow-sm"
+                            : "bg-[#17171B] text-[#A1A1AA] border-[#27272A] hover:text-white"
+                        }`}
+                        title={sc.title}
+                      >
+                        {sc.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="pt-2 border-t border-[#27272A]/70 text-[10px] text-[#71717A]">
+                  Weather telemetry synchronized via Kolkata regional Doppler feed.
+                </div>
+              )}
             </div>
 
             {/* Card 2: Dynamic Hazard Roadblocks Switcher */}
@@ -403,7 +632,9 @@ export default function FleetPage() {
                 </span>
               </div>
               <p className="text-[10px] text-[#71717A] leading-relaxed">
-                Toggle road segments to watch Bidirectional A* discover alternate shortest paths avoiding blockages:
+                {isDriverMode 
+                  ? 'Active road closures managed by Dispatch EOC. Bidirectional A* automatically diverts around hazards:'
+                  : 'Toggle road segments to watch Bidirectional A* discover alternate shortest paths avoiding blockages:'}
               </p>
               
               <div className="space-y-1.5">
@@ -418,11 +649,12 @@ export default function FleetPage() {
                     <button
                       key={road.id}
                       onClick={() => toggleRoadblock(road.id)}
+                      disabled={isDriverMode}
                       className={`w-full flex items-center justify-between p-2 rounded-xl border text-[11px] font-mono transition text-left ${
                         isBlocked 
                           ? "bg-[#EF4444]/15 border-[#EF4444]/40 text-[#EF4444]" 
                           : "bg-[#17171B] border-[#27272A] text-[#A1A1AA] hover:text-white"
-                      }`}
+                      } ${isDriverMode ? 'cursor-default' : ''}`}
                     >
                       <span className="truncate pr-2">{road.label}</span>
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isBlocked ? "bg-[#EF4444] text-white" : "bg-[#27272A] text-[#71717A]"}`}>
@@ -478,9 +710,13 @@ export default function FleetPage() {
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 sm:p-5 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#27272A]">
                 <div>
-                  <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">TURN-BY-TURN TACTICAL NAVIGATOR</p>
+                  <p className="text-[10px] font-bold tracking-[0.18em] text-[#71717A]">
+                    {isDriverMode ? 'ACTIVE DRIVER RUN' : 'TURN-BY-TURN TACTICAL NAVIGATOR'}
+                  </p>
                   <h2 className="text-[15px] font-bold text-white mt-0.5">
-                    Kolkata Emergency Safe Corridor
+                    {isDriverMode 
+                      ? `${driverInstructions.unitTag} ➔ ${KOLKATA_FLEET_NODES[destination]?.name.split('(')[0].trim() || destination}`
+                      : 'Kolkata Emergency Safe Corridor'}
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
@@ -544,7 +780,7 @@ export default function FleetPage() {
             {/* Real Kolkata Leaflet Interactive Map Container */}
             <div className="w-full h-[480px] sm:h-[540px] rounded-2xl overflow-hidden shadow-lg border border-[#27272A]">
               <KolkataFleetMap 
-                selectedUnit={selectedUnit}
+                selectedUnit={isDriverMode ? lockedUnitForDriver : selectedUnit}
                 destination={destination}
                 routeResult={routeResult}
                 blockedRoads={blockedRoads}
@@ -586,7 +822,7 @@ export default function FleetPage() {
                           ? "bg-[#8B5CF6]/20 border-[#8B5CF6] text-[#C4B5FD]" 
                           : "bg-[#17171B] border-[#27272A] text-[#D4D4D8]"
                       }`}>
-                        <span>{isOrigin ? "🚑" : isDest ? "🎯" : isMeeting ? "⚡" : "📍"}</span>
+                        <span>{isOrigin ? (isDriverMode ? driverInstructions.icon : "🚑") : isDest ? "🎯" : isMeeting ? "⚡" : "📍"}</span>
                         <span>{node ? node.name.split('(')[0].trim() : wp}</span>
                       </span>
 

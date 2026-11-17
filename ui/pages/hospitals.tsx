@@ -6,9 +6,12 @@ import {
   Hospital, Bed, Activity, CheckCircle, RefreshCw, 
   Shield, Clock, Sparkles, AlertCircle, Plus, Minus, ArrowUpRight
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 
 export default function HospitalsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [h1Beds, setH1Beds] = useState(28);
   const [h2Beds, setH2Beds] = useState(12);
   const [statusMsg, setStatusMsg] = useState("");
@@ -85,19 +88,23 @@ export default function HospitalsPage() {
         </div>
 
         {/* Route Navigation Tabs */}
-        <div className="flex items-center gap-1.5 font-mono">
-          <Link 
-            href="/"
-            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
-          >
-            [01] C2 Swarm
-          </Link>
-          <Link 
-            href="/fleet"
-            className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
-          >
-            [02] Fleet Uber
-          </Link>
+        <div className="hidden sm:flex items-center gap-1.5 font-mono">
+          {(!user || user.role === 'incident_commander') && (
+            <Link 
+              href="/"
+              className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+            >
+              [01] C2 Swarm
+            </Link>
+          )}
+          {(!user || user.role === 'incident_commander' || user.role === 'fleet_operator') && (
+            <Link 
+              href="/fleet"
+              className="px-2.5 py-1 rounded-md text-[10px] text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B] transition"
+            >
+              [02] Fleet Uber
+            </Link>
+          )}
           <Link 
             href="/hospitals"
             className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-[#10B981] text-black shadow-sm"
@@ -106,16 +113,13 @@ export default function HospitalsPage() {
           </Link>
         </div>
 
-        {/* Clock & Status */}
-        <div className="hidden sm:flex items-center gap-2">
-          <div className="text-right leading-none pr-1">
-            <div className="mono text-[13px] font-semibold">{clock || "14:35:12"}</div>
+        {/* Clock & Tactical Auth Badge */}
+        <div className="flex items-center gap-2">
+          <div className="hidden lg:block text-right leading-none pr-1">
+            <div className="mono text-[12px] font-semibold">{clock || "14:35:12"}</div>
             <div className="text-[9px] text-[#71717A] mt-0.5">LOCAL • SYNCED</div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 px-2.5 py-1 text-[10px] font-bold">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] live-dot" />
-            TRIAGE MESH ONLINE
-          </span>
+          <TacticalAuthBadge />
         </div>
       </header>
 
