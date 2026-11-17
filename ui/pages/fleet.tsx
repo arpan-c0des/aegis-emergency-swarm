@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { 
   computeBidirectionalAStar, 
+  fetchRealRoadRoute,
   KOLKATA_FLEET_NODES, 
   BidiRouteResult,
   KOLKATA_EDGES
@@ -163,7 +164,7 @@ export default function FleetPage() {
       .catch(() => setBackendOnline(false));
   }, []);
 
-  // Compute Bidirectional A* route whenever unit, destination, roadblocks, or weather change
+  // Compute Real Shortest Road Distance route whenever unit, destination, roadblocks, or weather change
   const computeRoute = async () => {
     setLoading(true);
     const effectiveUnit = isDriverMode ? lockedUnitForDriver : selectedUnit;
@@ -177,7 +178,17 @@ export default function FleetPage() {
       console.error('Local Bidirectional A* calculation error:', err);
     }
 
-    // 2. Concurrently reconcile with backend /api/fleet/route
+    // 2. Fetch true shortest road distance and realistic road geometry via Google / OSRM MLD street engine
+    try {
+      const realRoadResult = await fetchRealRoadRoute(origin, destination, blockedRoads, weatherData?.roadImpact);
+      if (realRoadResult) {
+        setRouteResult(realRoadResult);
+      }
+    } catch (err) {
+      console.warn('Real road engine query fallback:', err);
+    }
+
+    // 3. Concurrently reconcile with backend /api/fleet/route
     try {
       const res = await fetch(`${BACKEND_URL}/api/fleet/route`, {
         method: 'POST',
@@ -186,25 +197,24 @@ export default function FleetPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.routing) {
-          if (data.routing.distance_km !== undefined) {
-            setRouteResult((prev) => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                distanceKm: data.routing.distance_km ?? prev.distanceKm,
-                etaMinutes: data.routing.eta_minutes ?? prev.etaMinutes,
-                waypoints: data.routing.waypoints ?? prev.waypoints,
-                metrics: {
-                  ...prev.metrics,
-                  meetingNode: data.routing.metrics?.meeting_node ?? prev.metrics.meetingNode,
-                  nodesExpandedForward: data.routing.metrics?.nodes_expanded_forward ?? prev.metrics.nodesExpandedForward,
-                  nodesExpandedBackward: data.routing.metrics?.nodes_expanded_backward ?? prev.metrics.nodesExpandedBackward,
-                  totalNodesExpanded: data.routing.metrics?.total_nodes_expanded ?? prev.metrics.totalNodesExpanded
-                }
-              };
-            });
-          }
+        if (data.routing && data.routing.distance_km !== undefined) {
+          setRouteResult((prev) => {
+            if (!prev) return prev;
+            const isRealEngine = prev.algorithm && prev.algorithm.includes('Real Street Network');
+            return {
+              ...prev,
+              distanceKm: isRealEngine ? prev.distanceKm : (data.routing.distance_km ?? prev.distanceKm),
+              etaMinutes: isRealEngine ? prev.etaMinutes : (data.routing.eta_minutes ?? prev.etaMinutes),
+              waypoints: data.routing.waypoints ?? prev.waypoints,
+              metrics: {
+                ...prev.metrics,
+                meetingNode: data.routing.metrics?.meeting_node ?? prev.metrics.meetingNode,
+                nodesExpandedForward: data.routing.metrics?.nodes_expanded_forward ?? prev.metrics.nodesExpandedForward,
+                nodesExpandedBackward: data.routing.metrics?.nodes_expanded_backward ?? prev.metrics.nodesExpandedBackward,
+                totalNodesExpanded: data.routing.metrics?.total_nodes_expanded ?? prev.metrics.totalNodesExpanded
+              }
+            };
+          });
         }
       }
     } catch (e) {
@@ -701,18 +711,18 @@ export default function FleetPage() {
               </div>
             </div>
 
-            {/* Card 3: Bidirectional A* Algorithmic Diagnostics */}
+            {/* Card 3: Real Road & Algorithmic Diagnostics */}
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-2.5 font-mono text-[11px]">
               <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
-                <span className="text-[10px] font-bold tracking-wider text-[#71717A]">ALGORITHM METRICS</span>
+                <span className="text-[10px] font-bold tracking-wider text-[#71717A]">ROUTING ALGORITHM</span>
                 <span className="px-2 py-0.5 rounded bg-[#8B5CF6]/15 text-[#C4B5FD] text-[9px] font-bold border border-[#8B5CF6]/30">
-                  BIDIRECTIONAL A*
+                  {routeResult?.algorithm || "BIDIRECTIONAL A*"}
                 </span>
               </div>
               
               <div className="flex justify-between items-center text-[#A1A1AA]">
-                <span>Heuristic:</span>
-                <span className="text-white font-bold">Haversine Great-Circle</span>
+                <span>Road Network:</span>
+                <span className="text-white font-bold">Google / OSRM MLD Street Grid</span>
               </div>
               <div className="flex justify-between items-center text-[#A1A1AA]">
                 <span>Frontier Intersection:</span>

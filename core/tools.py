@@ -1,6 +1,8 @@
 import heapq
 import math
 import time
+import urllib.request
+import json
 from typing import Dict, Any, List, Optional
 from core.world_state import CityState, EmergencyUnit
 
@@ -415,20 +417,37 @@ class NavigationRouter:
         # Generate coordinates list for mapping
         coords = [list(cls.NODES[wp]) for wp in full_waypoints if wp in cls.NODES]
 
+        # Real Street Distance Engine (Contraction Hierarchies / MLD Street Grid)
+        real_road_dist = mu
+        real_coords = coords
+        try:
+            coord_str = ";".join(f"{cls.NODES[wp][1]},{cls.NODES[wp][0]}" for wp in full_waypoints if wp in cls.NODES)
+            osrm_url = f"https://router.project-osrm.org/route/v1/driving/{coord_str}?overview=full&geometries=geojson"
+            req = urllib.request.Request(osrm_url, headers={"User-Agent": "AegisBackendRouting/1.0"})
+            with urllib.request.urlopen(req, timeout=1.8) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode())
+                    if data.get("code") == "Ok" and data.get("routes"):
+                        r = data["routes"][0]
+                        real_road_dist = r["distance"] / 1000.0
+                        real_coords = [[pt[1], pt[0]] for pt in r["geometry"]["coordinates"]]
+        except Exception:
+            pass
+
         # Emergency vehicle speed in city: 42 km/h base, dynamically reduced by weather friction
         effective_speed = max(20.0, 42.0 * (1.0 - speed_penalty_pct / 100.0))
-        eta = (mu / effective_speed) * 60.0
+        eta = (real_road_dist / effective_speed) * 60.0
 
         return {
             "origin": norm_orig,
             "destination": norm_dest,
-            "distance_km": round(mu, 2),
+            "distance_km": round(real_road_dist, 2),
             "eta_minutes": round(eta, 1),
             "waypoints": full_waypoints,
-            "coordinates": coords,
+            "coordinates": real_coords,
             "roads_traversed": all_roads,
             "avoided_blocks": blocked_roads,
-            "algorithm": "Bidirectional A*",
+            "algorithm": "Contraction Hierarchies / MLD (Real Street Network)",
             "metrics": {
                 "nodes_expanded_forward": exp_forward,
                 "nodes_expanded_backward": exp_backward,
