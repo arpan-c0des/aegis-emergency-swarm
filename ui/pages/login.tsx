@@ -76,7 +76,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090B] text-white flex flex-col justify-center items-center p-4 selection:bg-[#F59E0B]/30 relative overflow-hidden">
+    <div 
+      className="min-h-screen bg-[#09090B] text-white flex flex-col justify-center items-center lg:items-end p-4 sm:p-6 lg:py-8 lg:px-12 xl:pr-24 selection:bg-[#F59E0B]/30 relative overflow-x-hidden bg-cover bg-no-repeat"
+      style={{
+        backgroundImage: "url('/auth-bg.jpg')",
+        backgroundPosition: 'left center'
+      }}
+    >
       <Head>
         <title>AEGIS — Tactical Access & Role Authentication</title>
         <meta name="description" content="AEGIS Cryptographic Access Control and Tactical Role Portal" />
@@ -85,16 +91,12 @@ export default function LoginPage() {
         <link rel="apple-touch-icon" href="/logo.png" />
       </Head>
 
-      {/* Tactical Grid Background Overlay */}
+      {/* Atmospheric overlay to preserve left-side AEGIS logo clarity while ensuring right-side form contrast */}
       <div 
-        className="pointer-events-none fixed inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)',
-          backgroundSize: '40px 40px'
-        }}
+        className="pointer-events-none fixed inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/60 lg:bg-gradient-to-r lg:from-transparent lg:via-black/20 lg:to-black/75" 
       />
 
-      <div className="w-full max-w-xl rounded-2xl border border-[#27272A] bg-[#111115] p-6 sm:p-8 shadow-2xl relative z-10 my-8">
+      <div className="w-full max-w-xl rounded-2xl border border-[#27272A]/80 bg-[#111115]/95 backdrop-blur-md p-6 sm:p-8 shadow-2xl relative z-10 my-8">
         
         {/* Brand Header */}
         <div className="flex items-start justify-between border-b border-[#27272A] pb-5 mb-6">
