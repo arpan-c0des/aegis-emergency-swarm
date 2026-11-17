@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRouter } from 'next/router';
 import { 
   Shield, Lock, ArrowRight, AlertTriangle, Eye, EyeOff, Check, Sparkles, Navigation, HeartPulse, Siren, Flame, Ambulance
 } from 'lucide-react';
@@ -6,6 +7,7 @@ import { UserRole, ROLE_CONFIGS } from '../utils/auth';
 import { useAuth } from '../contexts/AuthContext';
 
 export const LoginModal: React.FC = () => {
+  const router = useRouter();
   const { user, isInitialized, showLoginModal, login } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>('incident_commander');
   const [password, setPassword] = useState('');
@@ -14,8 +16,8 @@ export const LoginModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'primary' | 'field_drivers'>('primary');
 
-  // If user is already logged in or vault not initialized, do not render login modal
-  if (!isInitialized || (user && !showLoginModal)) return null;
+  // If user is already on dedicated /login page, or already logged in and modal not requested, or vault not initialized
+  if (!isInitialized || router.pathname === '/login' || (user && !showLoginModal)) return null;
 
   const currentRoleConfig = ROLE_CONFIGS[selectedRole];
 
@@ -66,15 +68,28 @@ export const LoginModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
-      <div className="relative w-full max-w-xl rounded-2xl border border-[#27272A] bg-[#101014] p-6 shadow-2xl my-8">
+    <div 
+      className="fixed inset-0 z-[9990] flex flex-col justify-center items-center lg:items-end p-4 sm:p-6 lg:py-8 lg:px-12 xl:pr-24 overflow-y-auto overflow-x-hidden bg-cover bg-no-repeat bg-[#09090B]"
+      style={{
+        backgroundImage: "url('/auth-bg.jpg')",
+        backgroundPosition: 'left center'
+      }}
+    >
+      {/* Atmospheric overlay to preserve left-side AEGIS logo clarity while ensuring right-side form contrast */}
+      <div 
+        className="pointer-events-none fixed inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/60 lg:bg-gradient-to-r lg:from-transparent lg:via-black/20 lg:to-black/75" 
+      />
+
+      <div className="relative w-full max-w-xl rounded-2xl border border-[#27272A]/80 bg-[#111115]/95 backdrop-blur-md p-6 sm:p-8 shadow-2xl z-10 my-8">
         
         {/* Header Ribbon */}
         <div className="flex items-center justify-between border-b border-[#27272A] pb-4 mb-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-[#F59E0B]">
-              <Shield size={22} />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="AEGIS Official Logo" 
+              className="h-11 w-11 object-contain drop-shadow-[0_0_15px_rgba(245,158,11,0.4)] shrink-0" 
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#F59E0B]">
