@@ -80,6 +80,9 @@ export default function LoginPage() {
       <Head>
         <title>AEGIS — Tactical Access & Role Authentication</title>
         <meta name="description" content="AEGIS Cryptographic Access Control and Tactical Role Portal" />
+        <link rel="icon" type="image/png" href="/logo.png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/logo.png" />
       </Head>
 
       {/* Tactical Grid Background Overlay */}
@@ -96,9 +99,11 @@ export default function LoginPage() {
         {/* Brand Header */}
         <div className="flex items-start justify-between border-b border-[#27272A] pb-5 mb-6">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-[#F59E0B] shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-              <Shield size={24} strokeWidth={2.4} />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="AEGIS Official Logo" 
+              className="h-12 w-12 object-contain drop-shadow-[0_0_20px_rgba(245,158,11,0.4)] shrink-0" 
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-[#F59E0B]">

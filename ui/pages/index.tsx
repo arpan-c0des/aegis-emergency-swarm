@@ -12,6 +12,7 @@ import {
 import { fetchKolkataLiveWeather, LiveWeatherData, getSimulatedWeatherScenario } from '../utils/liveWeather';
 import { useAuth } from '../contexts/AuthContext';
 import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
+import { useHospitalBeds } from '../utils/hospitalSync';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -100,6 +101,9 @@ export default function AegisTacticalCommandConsole() {
 
   // Core Tactical States
   const [worldState, setWorldState] = useState<any>(null);
+
+  // Real-Time Synchronized Hospital Bed Telemetry (Syncs with /hospitals)
+  const { h1Beds, h2Beds, h1Total, h2Total, h1Pct, h2Pct } = useHospitalBeds(worldState);
   const [transcript, setTranscript] = useState<any[]>([]);
   const [commandPlan, setCommandPlan] = useState<string>("");
   const [broadcastSummary, setBroadcastSummary] = useState<string>("");
@@ -650,7 +654,9 @@ export default function AegisTacticalCommandConsole() {
       <Head>
         <title>AEGIS — Tactical C2 • Kolkata Sector</title>
         <meta name="description" content="AEGIS Autonomous Multi-Agent Tactical Emergency Swarm Command Console" />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" href="/logo.png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/logo.png" />
       </Head>
 
       {/* ========================================================================= */}
@@ -659,13 +665,15 @@ export default function AegisTacticalCommandConsole() {
       <header className="relative h-14 shrink-0 border-b border-[#27272A] bg-[#0D0D10]/95 flex items-center justify-between gap-2 px-3 sm:px-4 z-40">
         {/* Brand / Logo + Route Navigation Tabs */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-[#F59E0B] text-black shrink-0 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-              <Shield size={20} strokeWidth={2.4} />
-            </div>
+          <div className="flex items-center gap-2.5">
+            <img 
+              src="/logo.png" 
+              alt="AEGIS Official Logo" 
+              className="h-9 w-9 object-contain drop-shadow-[0_0_12px_rgba(245,158,11,0.4)] shrink-0" 
+            />
             <div className="leading-none">
-              <div className="font-bold tracking-[0.18em] text-[16px] sm:text-[17px]">AEGIS</div>
-              <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap">Tactical C2 • Kolkata Sector</div>
+              <div className="font-bold tracking-[0.18em] text-[16px] sm:text-[17px] text-white">AEGIS</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap font-mono">Tactical C2 • Kolkata Sector</div>
             </div>
           </div>
 
@@ -970,14 +978,14 @@ export default function AegisTacticalCommandConsole() {
             <div className="mt-1.5 space-y-2">
               {/* SSKM Hospital / IPGMER H1 */}
               <div className="flex items-center gap-2.5 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5">
-                <ProgressRing pct={76} color="#10B981">
-                  <span className="mono text-[12px] font-bold">76%</span>
+                <ProgressRing pct={h1Pct} color="#10B981">
+                  <span className="mono text-[12px] font-bold">{h1Pct}%</span>
                 </ProgressRing>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold truncate text-white">
                     SSKM HOSPITAL <span className="text-[#71717A]">(H1)</span>
                   </p>
-                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">28 / 37 beds free · Central Trauma</p>
+                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">{h1Beds} / {h1Total} beds free · Central Trauma</p>
                   <span className="mt-1 inline-block rounded-full bg-[#10B981]/10 px-2 py-0.5 text-[8px] font-bold text-[#10B981]">
                     LEVEL 1 TRAUMA READY
                   </span>
@@ -986,14 +994,14 @@ export default function AegisTacticalCommandConsole() {
 
               {/* Apollo Multispecialty / St Luke's H2 */}
               <div className="flex items-center gap-2.5 rounded-xl border border-[#27272A] bg-[#17171B] p-2.5">
-                <ProgressRing pct={41} color="#F59E0B">
-                  <span className="mono text-[12px] font-bold">41%</span>
+                <ProgressRing pct={h2Pct} color="#F59E0B">
+                  <span className="mono text-[12px] font-bold">{h2Pct}%</span>
                 </ProgressRing>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold truncate text-white">
                     APOLLO / ST. LUKE'S <span className="text-[#71717A]">(H2)</span>
                   </p>
-                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">12 / 29 beds free · EM Bypass</p>
+                  <p className="mono mt-0.5 text-[10px] text-[#A1A1AA]">{h2Beds} / {h2Total} beds free · EM Bypass</p>
                   <span className="mt-1 inline-block rounded-full bg-[#3B82F6]/10 px-2 py-0.5 text-[8px] font-bold text-[#3B82F6]">
                     BURNS & TRIAGE READY
                   </span>

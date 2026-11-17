@@ -312,6 +312,9 @@ export default function FleetPage() {
             : 'Fleet Uber Kolkata | Bidirectional A* Emergency Routing'}
         </title>
         <meta name="description" content="Kolkata tactical emergency fleet routing with Bidirectional A* shortest road distance" />
+        <link rel="icon" type="image/png" href="/logo.png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/logo.png" />
       </Head>
 
       {/* Tactical Top Header Bar */}
@@ -319,20 +322,24 @@ export default function FleetPage() {
         
         {/* Brand & Sector Header */}
         <div className="flex items-center gap-3">
-          <div 
-            className="flex h-9 w-9 items-center justify-center rounded-xl border"
-            style={{
-              backgroundColor: isDriverMode ? `${driverInstructions.badgeColor}20` : '#3B82F615',
-              borderColor: isDriverMode ? `${driverInstructions.badgeColor}50` : '#3B82F640',
-              color: isDriverMode ? driverInstructions.badgeColor : '#3B82F6'
-            }}
-          >
-            {isDriverMode ? (
+          {isDriverMode ? (
+            <div 
+              className="flex h-9 w-9 items-center justify-center rounded-xl border shrink-0"
+              style={{
+                backgroundColor: `${driverInstructions.badgeColor}20`,
+                borderColor: `${driverInstructions.badgeColor}50`,
+                color: driverInstructions.badgeColor
+              }}
+            >
               <span className="text-lg">{driverInstructions.icon}</span>
-            ) : (
-              <Truck size={18} />
-            )}
-          </div>
+            </div>
+          ) : (
+            <img 
+              src="/logo.png" 
+              alt="AEGIS Official Logo" 
+              className="h-9 w-9 object-contain drop-shadow-[0_0_12px_rgba(59,130,246,0.4)] shrink-0" 
+            />
+          )}
           <div>
             <div className="font-bold tracking-[0.16em] text-[14px] sm:text-[15px] text-white flex items-center gap-1.5">
               <span>{isDriverMode ? driverInstructions.unitTag : 'AEGIS FLEET UBER'}</span>

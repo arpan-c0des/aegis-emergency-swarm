@@ -8,12 +8,15 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
+import { useHospitalBeds } from '../utils/hospitalSync';
 
 export default function HospitalsPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [h1Beds, setH1Beds] = useState(28);
-  const [h2Beds, setH2Beds] = useState(12);
+  
+  // Real-time bidirectional hospital bed synchronizer (syncs across all tabs & C2 dashboard)
+  const { h1Beds, h2Beds, h1Total, h2Total, h1Pct, h2Pct, updateH1, updateH2 } = useHospitalBeds();
+
   const [statusMsg, setStatusMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [clock, setClock] = useState("");
@@ -28,20 +31,14 @@ export default function HospitalsPage() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    fetch(`${BACKEND_URL}/api/state`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.hospitals) {
-          if (data.hospitals.H1) setH1Beds(data.hospitals.H1.available_beds);
-          if (data.hospitals.H2) setH2Beds(data.hospitals.H2.available_beds);
-        }
-      })
-      .catch((err) => console.error("Could not fetch hospital telemetry", err));
-  }, []);
-
   const updateHospital = async (id: string, beds: number) => {
     setLoading(true);
+    if (id === "H1") {
+      updateH1(beds);
+    } else {
+      updateH2(beds);
+    }
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/hospitals/update`, {
         method: "POST",
@@ -54,36 +51,36 @@ export default function HospitalsPage() {
         })
       });
       const data = await res.json();
-      setStatusMsg(`Updated ${id} available capacity to ${beds} beds. Synchronized with Gemini swarm.`);
+      setStatusMsg(`Updated ${id} available capacity to ${beds} beds. Synchronized across C2 console and swarm.`);
     } catch (e) {
       console.error(e);
-      setStatusMsg(`Capacity local updated to ${beds} beds for ${id}.`);
+      setStatusMsg(`Updated ${id} capacity to ${beds} beds (live local sync active).`);
     } finally {
       setLoading(false);
     }
   };
-
-  const h1Total = 37;
-  const h2Total = 29;
-  const h1Pct = Math.round((h1Beds / h1Total) * 100);
-  const h2Pct = Math.round((h2Beds / h2Total) * 100);
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col justify-between selection:bg-[#10B981]/30">
       <Head>
         <title>AEGIS — Hospital Bed & Admissions Management</title>
         <meta name="description" content="AEGIS Hospital Bed Admissions and Emergency Ward Telemetry" />
+        <link rel="icon" type="image/png" href="/logo.png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/logo.png" />
       </Head>
 
       {/* Top Header */}
       <header className="relative h-14 shrink-0 border-b border-[#27272A] bg-[#0D0D10]/95 flex items-center justify-between px-3 sm:px-5 z-40">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-[#10B981] text-black shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-            <Hospital size={18} strokeWidth={2.4} />
-          </div>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img 
+            src="/logo.png" 
+            alt="AEGIS Official Logo" 
+            className="h-9 w-9 object-contain drop-shadow-[0_0_12px_rgba(16,185,129,0.4)] shrink-0" 
+          />
           <div className="leading-none">
-            <div className="font-bold tracking-[0.18em] text-[16px] sm:text-[17px]">AEGIS MED</div>
-            <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap">Bed Intake • Triage Admissions</div>
+            <div className="font-bold tracking-[0.18em] text-[16px] sm:text-[17px] text-white">AEGIS MED</div>
+            <div className="text-[10px] text-[#A1A1AA] mt-1 whitespace-nowrap font-mono">Bed Intake • Triage Admissions</div>
           </div>
         </div>
 
@@ -203,7 +200,7 @@ export default function HospitalsPage() {
                     <input 
                       type="number"
                       value={h1Beds}
-                      onChange={(e) => setH1Beds(parseInt(e.target.value) || 0)}
+                      onChange={(e) => updateH1(parseInt(e.target.value) || 0)}
                       className="mono font-bold text-lg text-white bg-transparent outline-none w-20"
                     />
                   </div>
@@ -212,13 +209,13 @@ export default function HospitalsPage() {
                 {/* Quick Increment/Decrement */}
                 <div className="flex items-center gap-1.5">
                   <button 
-                    onClick={() => setH1Beds((prev) => Math.max(0, prev - 1))}
+                    onClick={() => updateH1(Math.max(0, h1Beds - 1))}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
                   >
                     <Minus size={13} />
                   </button>
                   <button 
-                    onClick={() => setH1Beds((prev) => Math.min(h1Total, prev + 1))}
+                    onClick={() => updateH1(Math.min(h1Total, h1Beds + 1))}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
                   >
                     <Plus size={13} />
@@ -237,7 +234,7 @@ export default function HospitalsPage() {
                   <span>Update SSKM Hospital (H1)</span>
                 </button>
                 <button 
-                  onClick={() => { setH1Beds(28); updateHospital("H1", 28); }}
+                  onClick={() => updateHospital("H1", 28)}
                   className="px-3 py-2.5 rounded-xl border border-[#27272A] bg-[#131316] text-[11px] font-bold text-[#A1A1AA] hover:text-white hover:border-[#3F3F46] transition"
                   title="Reset to 28"
                 >
@@ -289,7 +286,7 @@ export default function HospitalsPage() {
                     <input 
                       type="number" 
                       value={h2Beds}
-                      onChange={(e) => setH2Beds(parseInt(e.target.value) || 0)}
+                      onChange={(e) => updateH2(parseInt(e.target.value) || 0)}
                       className="mono font-bold text-lg text-white bg-transparent outline-none w-20"
                     />
                   </div>
@@ -298,13 +295,13 @@ export default function HospitalsPage() {
                 {/* Quick Increment/Decrement */}
                 <div className="flex items-center gap-1.5">
                   <button 
-                    onClick={() => setH2Beds((prev) => Math.max(0, prev - 1))}
+                    onClick={() => updateH2(Math.max(0, h2Beds - 1))}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
                   >
                     <Minus size={13} />
                   </button>
                   <button 
-                    onClick={() => setH2Beds((prev) => Math.min(h2Total, prev + 1))}
+                    onClick={() => updateH2(Math.min(h2Total, h2Beds + 1))}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
                   >
                     <Plus size={13} />
@@ -323,7 +320,7 @@ export default function HospitalsPage() {
                   <span>Update Apollo / St. Luke's (H2)</span>
                 </button>
                 <button 
-                  onClick={() => { setH2Beds(12); updateHospital("H2", 12); }}
+                  onClick={() => updateHospital("H2", 12)}
                   className="px-3 py-2.5 rounded-xl border border-[#27272A] bg-[#131316] text-[11px] font-bold text-[#A1A1AA] hover:text-white hover:border-[#3F3F46] transition"
                   title="Reset to 12"
                 >

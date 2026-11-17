@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity, ShieldAlert, Truck, Fuel, Bed } from 'lucide-react';
+import { getStoredHospitalBeds } from '../utils/hospitalSync';
 
 interface Props {
   state: any;
@@ -7,6 +8,10 @@ interface Props {
 }
 
 export const ResourceDashboard: React.FC<Props> = ({ state, solanaAudit }) => {
+  const storedBeds = getStoredHospitalBeds();
+  const h1Available = state?.hospitals?.H1?.available_beds ?? storedBeds.H1;
+  const h2Available = state?.hospitals?.H2?.available_beds ?? storedBeds.H2;
+
   if (!state) return <div className="text-gray-500 text-sm">Telemetry loading...</div>;
 
   return (
@@ -32,10 +37,10 @@ export const ResourceDashboard: React.FC<Props> = ({ state, solanaAudit }) => {
           <Bed size={16} />
         </div>
         <div className="text-xl font-bold text-white">
-          {state.hospitals?.H1?.available_beds ?? 0} <span className="text-xs font-normal text-gray-400">/ {state.hospitals?.H1?.total_beds ?? 0} SSKM (H1)</span>
+          {h1Available} <span className="text-xs font-normal text-gray-400">/ {state.hospitals?.H1?.total_beds ?? 37} SSKM (H1)</span>
         </div>
         <div className="text-xs text-gray-400 mt-1">
-          Apollo (H2): {state.hospitals?.H2?.available_beds ?? 0} beds available
+          Apollo (H2): {h2Available} beds available
         </div>
       </div>
 
