@@ -38,15 +38,36 @@ export default function FleetPage() {
   const router = useRouter();
   const { user } = useAuth();
 
+  const isOperator = user?.role === 'fleet_operator';
+  const isCommander = user?.role === 'incident_commander';
+
+  // Automatically clean residual driver query from URL for Fleet Operator so it always opens fresh with all vehicles
+  useEffect(() => {
+    if (isOperator && router.query.driver) {
+      router.replace('/fleet', undefined, { shallow: true });
+    }
+  }, [isOperator, router.query.driver]);
+
   // Detect Driver Mode either from logged-in user role or URL query parameter
   const driverQuery = router.query.driver as string | undefined;
   
   const activeDriverRole: 'driver_police' | 'driver_fire' | 'driver_ambulance' | null = useMemo(() => {
-    if (user?.role === 'driver_police' || driverQuery === 'police') return 'driver_police';
-    if (user?.role === 'driver_fire' || driverQuery === 'fire') return 'driver_fire';
-    if (user?.role === 'driver_ambulance' || driverQuery === 'ambulance') return 'driver_ambulance';
+    // Fleet Operator has full access to all vehicles and is NEVER locked into driver mode
+    if (isOperator) {
+      return null;
+    }
+    // Field Driver roles are strictly locked to their driver cockpit
+    if (user?.role === 'driver_police') return 'driver_police';
+    if (user?.role === 'driver_fire') return 'driver_fire';
+    if (user?.role === 'driver_ambulance') return 'driver_ambulance';
+
+    // For Commander (or unauthenticated preview), activate driver mode only if query param is set
+    if (driverQuery === 'police') return 'driver_police';
+    if (driverQuery === 'fire') return 'driver_fire';
+    if (driverQuery === 'ambulance') return 'driver_ambulance';
+
     return null;
-  }, [user?.role, driverQuery]);
+  }, [user?.role, driverQuery, isOperator]);
 
   const isDriverMode = Boolean(activeDriverRole);
 
@@ -326,16 +347,21 @@ export default function FleetPage() {
                 {isDriverMode ? 'FIELD COCKPIT' : 'KOLKATA SECTOR'}
               </span>
             </div>
-            <div className="text-[10px] text-[#A1A1AA] hidden sm:block">
-              {isDriverMode 
+            <div className="text-[10px] text-[#A1A1AA] hidden sm:flex items-center gap-2">
+              <span>{isDriverMode 
                 ? 'Field Driver Display • Vehicle Locked by Dispatch • Destination Authority Active'
-                : 'Tactical Emergency Uber • Bidirectional A* Real Road Routing'}
+                : 'Tactical Emergency Uber • Bidirectional A* Real Road Routing'}</span>
+              {isCommander && isDriverMode && (
+                <Link href="/fleet" className="text-[10px] font-bold text-[#F59E0B] hover:underline">
+                  [Exit Cockpit Mode]
+                </Link>
+              )}
             </div>
           </div>
         </div>
 
         {/* Global Navigation Tabs (Filtered for non-command roles) */}
-        {!isDriverMode && (
+        {(!isDriverMode || isCommander) && (
           <div className="hidden md:flex items-center gap-1.5 font-mono">
             {(!user || user.role === 'incident_commander') && (
               <Link 
@@ -347,7 +373,9 @@ export default function FleetPage() {
             )}
             <Link 
               href="/fleet"
-              className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-[#3B82F6] text-white shadow-sm"
+              className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition shadow-sm ${
+                !isDriverMode ? "bg-[#3B82F6] text-white" : "text-[#A1A1AA] hover:text-white border border-[#27272A] hover:bg-[#17171B]"
+              }`}
             >
               [02] Fleet Uber
             </Link>

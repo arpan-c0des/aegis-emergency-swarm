@@ -117,11 +117,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(session);
     setShowLoginModal(false);
 
-    // Redirect to default route for this role if not already there or unauthorized
+    // ALWAYS navigate freshly to the designated default route for this role
+    // This ensures Commander lands on '/', Fleet Operator lands on clean '/fleet', and query params are not carried over
     const defaultRoute = ROLE_CONFIGS[selectedRole].defaultRoute;
-    if (!isRouteAuthorizedForRole(selectedRole, router.pathname)) {
-      router.push(defaultRoute);
-    }
+    router.push(defaultRoute);
 
     return { success: true };
   };
@@ -130,6 +129,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     clearSession();
     setUser(null);
     setShowLoginModal(true);
+
+    // Clean up any residual driver query parameters from the URL
+    if (router.query.driver) {
+      router.replace(router.pathname, undefined, { shallow: true });
+    }
   };
 
   const initializeSystem = async (passwords: Record<UserRole, string>): Promise<void> => {

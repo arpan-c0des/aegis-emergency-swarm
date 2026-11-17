@@ -5,6 +5,7 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { VaultSetupModal } from '../components/VaultSetupModal';
 import { LoginModal } from '../components/LoginModal';
 import { SecurityVaultModal } from '../components/SecurityVaultModal';
+import { CommanderCornerMenu } from '../components/CommanderCornerMenu';
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   return (
@@ -13,6 +14,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       <VaultSetupModal />
       <LoginModal />
       <SecurityVaultModal />
+      <CommanderCornerMenu />
     </AuthProvider>
   );
 }
