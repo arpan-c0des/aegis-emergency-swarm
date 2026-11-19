@@ -15,6 +15,7 @@ import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 import { useHospitalBeds } from '../utils/hospitalSync';
 import { useLiveResponseTime } from '../utils/liveResponseTime';
 import { useEvacuationSync } from '../utils/evacuationSync';
+import { RadioFrequencyVisualizer } from '../components/RadioFrequencyVisualizer';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -442,6 +443,15 @@ export default function AegisTacticalCommandConsole() {
   // Dynamic Radio Voice Broadcast Controller
   // Eliminates repetitive static audio by speaking the genuine, active incident guidelines
   const playVoiceBroadcast = (summaryText?: string) => {
+    // If audio is actively broadcasting and user clicks the broadcast button again, toggle off/mute
+    if (isPlayingAudio && !summaryText) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setIsPlayingAudio(false);
+      return;
+    }
+
     setIsPlayingAudio(true);
 
     let textToSpeak = summaryText || broadcastSummary;
@@ -771,16 +781,8 @@ export default function AegisTacticalCommandConsole() {
             <span>DISPATCH RADIO</span>
           </div>
           
-          {/* Animated Waveform Equalizer Bars */}
-          <div className="flex items-center gap-1 h-4 px-1 shrink-0 text-[#F59E0B]">
-            <span className={`wave-bar wave-bar-1 ${!isPlayingAudio ? 'h-1 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-2 ${!isPlayingAudio ? 'h-1.5 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-3 ${!isPlayingAudio ? 'h-2 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-4 ${!isPlayingAudio ? 'h-1 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-5 ${!isPlayingAudio ? 'h-2.5 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-6 ${!isPlayingAudio ? 'h-1.5 opacity-40' : ''}`} />
-            <span className={`wave-bar wave-bar-7 ${!isPlayingAudio ? 'h-1 opacity-40' : ''}`} />
-          </div>
+          {/* Radio Frequency & Volume Visualizer (Static baseline when idle; dynamic frequency spectrum during broadcast) */}
+          <RadioFrequencyVisualizer isPlaying={isPlayingAudio} />
 
           <p className="text-[11px] truncate text-[#D4D4D8] font-mono">
             {broadcastSummary ? `"${broadcastSummary}"` : (commandPlan ? `Plan Order: ${commandPlan.slice(0, 110)}...` : `Standing by: ${generateDynamicGuideline()}`)}
@@ -798,7 +800,7 @@ export default function AegisTacticalCommandConsole() {
             }`}
           >
             <Volume2 size={12} />
-            <span>{isPlayingAudio ? "BROADCASTING LIVE…" : "SPEAK INCIDENT GUIDELINE"}</span>
+            <span>{isPlayingAudio ? "MUTE BROADCAST" : "SPEAK INCIDENT GUIDELINE"}</span>
           </button>
         </div>
       </div>
