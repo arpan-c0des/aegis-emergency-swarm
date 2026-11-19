@@ -15,6 +15,7 @@ import {
   clearSession,
   isRouteAuthorizedForRole,
   syncVaultWithServer,
+  syncVaultToServer,
   resignCommanderOnServer
 } from '../utils/auth';
 
@@ -68,6 +69,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(session);
           setShowLoginModal(false);
           setShowInitModal(false);
+          if (session.role === 'incident_commander' && localVault) {
+            syncVaultToServer(localVault).catch(() => {});
+          }
         } else {
           setUser(null);
           if (localInitialized) {
@@ -159,6 +163,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const session = createActiveSession(selectedRole);
     setUser(session);
     setShowLoginModal(false);
+
+    if (selectedRole === 'incident_commander') {
+      const currentVault = loadMasterVault();
+      if (currentVault) {
+        syncVaultToServer(currentVault).catch(() => {});
+      }
+    }
 
     // ALWAYS navigate freshly to the designated default route for this role
     const defaultRoute = ROLE_CONFIGS[selectedRole].defaultRoute;

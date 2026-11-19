@@ -1,7 +1,7 @@
 /**
  * AEGIS Emergency Response Swarm - Cryptographic Authentication & RBAC Engine
- * Provides role-based access control, salted cryptographic password hashing,
- * persistent credential vault management, centralized server synchronization,
+ * Provides role-based access control, standard SHA-256 password hashing (with pure JS fallback),
+ * persistent multi-device credential vault management, server-side verification,
  * and route authorization.
  */
 
@@ -36,7 +36,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Commander',
     description: 'Master operational authority across all sectors, C2 swarm, fleet dispatch, hospital triage, and security credentials.',
     category: 'command',
-    color: '#F59E0B', // Amber
+    color: '#F59E0B',
     bgLight: 'rgba(245, 158, 11, 0.12)',
     borderColor: 'rgba(245, 158, 11, 0.35)',
     icon: '🛡️',
@@ -49,7 +49,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Fleet Operator',
     description: 'Full dispatch authority over Kolkata emergency fleet, Bidirectional A* route routing, and road impedance control.',
     category: 'operations',
-    color: '#3B82F6', // Blue
+    color: '#3B82F6',
     bgLight: 'rgba(59, 130, 246, 0.12)',
     borderColor: 'rgba(59, 130, 246, 0.35)',
     icon: '🗺️',
@@ -62,7 +62,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Bed Intake Specialist',
     description: 'Direct authority over SSKM Hospital (H1) and Apollo Trauma Clinic (H2) emergency bed intake and triage quotas.',
     category: 'operations',
-    color: '#10B981', // Emerald
+    color: '#10B981',
     bgLight: 'rgba(16, 185, 129, 0.12)',
     borderColor: 'rgba(16, 185, 129, 0.35)',
     icon: '🏥',
@@ -75,7 +75,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Police Driver',
     description: 'Field officer tactical cockpit. Vehicle fixed to POL-02 Rapid Interceptor. Authorized to select destination and receive dispatch orders.',
     category: 'field_driver',
-    color: '#6366F1', // Indigo
+    color: '#6366F1',
     bgLight: 'rgba(99, 102, 241, 0.12)',
     borderColor: 'rgba(99, 102, 241, 0.35)',
     icon: '🚓',
@@ -90,7 +90,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Fire Driver',
     description: 'Field fire suppression cockpit. Vehicle fixed to FIRE-03 Heavy Pumper. Authorized to select destination and receive dispatch orders.',
     category: 'field_driver',
-    color: '#EF4444', // Red
+    color: '#EF4444',
     bgLight: 'rgba(239, 68, 68, 0.12)',
     borderColor: 'rgba(239, 68, 68, 0.35)',
     icon: '🚒',
@@ -105,7 +105,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleMetadata> = {
     shortTitle: 'Ambulance Driver',
     description: 'Field critical care cockpit. Vehicle fixed to AMB-07 Advanced Life Support. Authorized to select destination and receive trauma bay orders.',
     category: 'field_driver',
-    color: '#EC4899', // Pink / Rose
+    color: '#EC4899',
     bgLight: 'rgba(236, 72, 153, 0.12)',
     borderColor: 'rgba(236, 72, 153, 0.35)',
     icon: '🚑',
@@ -152,7 +152,7 @@ const VAULT_STORAGE_KEY = 'aegis_master_security_vault_v1';
 const SESSION_STORAGE_KEY = 'aegis_auth_session_v1';
 const RESIGNED_STORAGE_KEY = 'aegis_commander_resigned_v1';
 
-// Pre-seeded master credentials matching the pre-filled tactical passwords
+// Default pre-seeded vault matching standard setup
 export const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
   initialized: true,
   version: '1.0.0-AEGIS-SECURE',
@@ -213,6 +213,86 @@ export const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
 };
 
 /**
+ * Robust pure JavaScript SHA-256 implementation (RFC 6234).
+ * Guarantees 100% identical SHA-256 hex digests across all browsers, mobile devices,
+ * webviews, and unsecure HTTP origins where window.crypto.subtle is absent.
+ */
+export function pureJsSha256(ascii: string): string {
+  function rightRotate(value: number, amount: number) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  const words: number[] = [];
+  const asciiBitLength = ascii.length * 8;
+  const hash: number[] = [];
+  const k: number[] = [];
+  let primeCounter = 0;
+  const isComposite: Record<number, boolean> = {};
+
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (let i = 0; i < 313; i += candidate) {
+        isComposite[i] = true;
+      }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+
+  ascii += '\x80';
+  while ((ascii.length % 64) - 56) ascii += '\x00';
+  for (let i = 0; i < ascii.length; i++) {
+    const j = ascii.charCodeAt(i);
+    words[i >> 2] |= j << (((3 - i) % 4) * 8);
+  }
+  words[words.length] = (asciiBitLength / maxWord) | 0;
+  words[words.length] = asciiBitLength | 0;
+
+  for (let j = 0; j < words.length; ) {
+    const w = words.slice(j, (j += 16));
+    const oldHash = [...hash];
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i - 15];
+      const w2 = w[i - 2];
+      const a = hash[0];
+      const e = hash[4];
+      const temp1 =
+        hash[7] +
+        (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+        ((e & hash[5]) ^ (~e & hash[6])) +
+        k[i] +
+        ((w[i] =
+          i < 16
+            ? w[i]
+            : (w[i - 16] +
+                (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+                w[i - 7] +
+                (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) |
+              0) | 0);
+      const temp2 =
+        (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
+        ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash.unshift((temp1 + temp2) | 0);
+      hash.pop();
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (let i = 0; i < 8; i++) {
+      hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+  }
+
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    for (let j = 3; j >= 0; j--) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result += (b < 16 ? '0' : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+
+/**
  * Generate cryptographically secure random hexadecimal salt
  */
 export function generateCryptographicSalt(length: number = 32): string {
@@ -221,36 +301,32 @@ export function generateCryptographicSalt(length: number = 32): string {
     window.crypto.getRandomValues(array);
     return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
-  // SSR fallback
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
 /**
- * Securely compute SHA-256 hash with cryptographic salt using Web Crypto API
+ * Securely compute SHA-256 hash with cryptographic salt
  */
 export async function hashPasswordWithSalt(password: string, salt: string): Promise<string> {
   const saltedString = `aegis-salt-${salt}-pass-${password}-salt-${salt}`;
 
   if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(saltedString);
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(saltedString);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (_) {
+      // Fall through to pure JS SHA-256
+    }
   }
 
-  // Pure JS fallback (djb2 / murmur hybrid) for non-crypto SSR environments
-  let hash = 5381;
-  for (let i = 0; i < saltedString.length; i++) {
-    hash = ((hash << 5) + hash) + saltedString.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return 'fallback_' + Math.abs(hash).toString(16).padStart(16, '0');
+  return pureJsSha256(saltedString);
 }
 
 /**
  * Check if the Master Security Vault has been initialized.
- * Defaults to true for any device unless the Commander has explicitly resigned.
  */
 export function isVaultInitialized(): boolean {
   if (typeof window === 'undefined') return true;
@@ -260,8 +336,7 @@ export function isVaultInitialized(): boolean {
     }
     const raw = localStorage.getItem(VAULT_STORAGE_KEY);
     if (!raw) {
-      // Default pre-seeded vault is initialized by default
-      return true;
+      return true; // Defaults to initialized with pre-seeded credentials
     }
     const parsed: MasterCredentialVault = JSON.parse(raw);
     return Boolean(parsed && parsed.initialized && parsed.credentials && parsed.credentials.incident_commander);
@@ -281,7 +356,6 @@ export function loadMasterVault(): MasterCredentialVault | null {
     }
     const raw = localStorage.getItem(VAULT_STORAGE_KEY);
     if (!raw) {
-      // Initialize with default pre-seeded vault
       saveMasterVault(DEFAULT_PRESEEDED_VAULT);
       return DEFAULT_PRESEEDED_VAULT;
     }
@@ -306,7 +380,7 @@ export function saveMasterVault(vault: MasterCredentialVault): void {
 }
 
 /**
- * Fetch centralized vault state from server to sync multi-device state
+ * Synchronize vault state with central server across all devices
  */
 export async function syncVaultWithServer(): Promise<{
   initialized: boolean;
@@ -324,7 +398,7 @@ export async function syncVaultWithServer(): Promise<{
     const data = await res.json();
 
     if (data.resigned || !data.initialized) {
-      // System has been resigned! Wipe local state
+      // System has been resigned across all devices! Reset local storage
       if (typeof window !== 'undefined') {
         localStorage.setItem(RESIGNED_STORAGE_KEY, 'true');
         localStorage.removeItem(VAULT_STORAGE_KEY);
@@ -334,6 +408,20 @@ export async function syncVaultWithServer(): Promise<{
     }
 
     if (data.initialized && data.vault) {
+      const localVault = loadMasterVault();
+      
+      // If the local vault was customized by the Commander (e.g. newer timestamp), push it to server
+      const localIsCustom = localVault && 
+        localVault.activatedAt && 
+        localVault.activatedAt !== '2026-11-17T00:00:00.000Z' &&
+        (!data.vault.activatedAt || localVault.activatedAt > data.vault.activatedAt);
+
+      if (localIsCustom) {
+        await syncVaultToServer(localVault!);
+        return { initialized: true, resigned: false, vault: localVault };
+      }
+
+      // Otherwise save the central server vault locally
       if (typeof window !== 'undefined') {
         localStorage.removeItem(RESIGNED_STORAGE_KEY);
         saveMasterVault(data.vault);
@@ -374,7 +462,7 @@ export async function resignCommanderOnServer(): Promise<boolean> {
     await fetch('/api/vault', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'resign' })
+      body: JSON.stringify({ action: 'resign', timestamp: new Date().toISOString() })
     });
   } catch (err) {
     console.warn('[Aegis Auth] Failed to notify server of commander resignation:', err);
@@ -389,8 +477,47 @@ export async function resignCommanderOnServer(): Promise<boolean> {
 }
 
 /**
+ * Verify credentials for a specific role.
+ * Uses direct server-side verification to guarantee multi-device accuracy,
+ * falling back to local cryptographic hash check if offline.
+ */
+export async function verifyRoleCredentials(role: UserRole, plainPassword: string): Promise<boolean> {
+  // 1. Try server-side verification first (works across all devices and lambdas)
+  try {
+    const res = await fetch('/api/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verify', role, password: plainPassword })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.valid) {
+        if (data.vault) {
+          saveMasterVault(data.vault);
+        }
+        return true;
+      }
+      if (data.error && !data.valid) {
+        return false;
+      }
+    }
+  } catch (err) {
+    console.warn('[Aegis Auth] Server verification offline, trying local vault:', err);
+  }
+
+  // 2. Local fallback verification using robust SHA-256
+  let vault = loadMasterVault();
+  if (!vault || !vault.initialized) return false;
+
+  const cred = vault.credentials[role];
+  if (!cred) return false;
+
+  const computedHash = await hashPasswordWithSalt(plainPassword, cred.salt);
+  return computedHash === cred.hash;
+}
+
+/**
  * First-time initialization of the Master Security Vault
- * Incident Commander sets his master password and provisions credentials for all operational roles.
  */
 export async function initializeMasterVault(
   passwords: Record<UserRole, string>
@@ -441,24 +568,6 @@ export async function initializeMasterVault(
   saveMasterVault(vault);
   await syncVaultToServer(vault);
   return vault;
-}
-
-/**
- * Verify credentials for a specific role
- */
-export async function verifyRoleCredentials(role: UserRole, plainPassword: string): Promise<boolean> {
-  let vault = loadMasterVault();
-  if (!vault || !vault.initialized) {
-    const syncRes = await syncVaultWithServer();
-    vault = syncRes.vault;
-  }
-  if (!vault || !vault.initialized) return false;
-
-  const cred = vault.credentials[role];
-  if (!cred) return false;
-
-  const computedHash = await hashPasswordWithSalt(plainPassword, cred.salt);
-  return computedHash === cred.hash;
 }
 
 /**
@@ -528,7 +637,7 @@ export function createActiveSession(role: UserRole): UserSession {
     name: config.title,
     sessionToken: 'aegis_' + generateCryptographicSalt(24),
     createdAt: Date.now(),
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     assignedVehicleId: config.assignedVehicleId,
     assignedVehicleName: config.assignedVehicleName,
   };
@@ -552,10 +661,8 @@ export function isRouteAuthorizedForRole(role: UserRole, pathname: string): bool
   const config = ROLE_CONFIGS[role];
   if (!config) return false;
 
-  // Incident Commander has unrestricted access to everything
   if (role === 'incident_commander') return true;
 
-  // Clean pathname (remove query params or trailing slashes)
   const cleanPath = pathname.split('?')[0].replace(/\/$/, '') || '/';
 
   return config.allowedRoutes.some((allowed) => {

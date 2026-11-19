@@ -326,3 +326,70 @@ def export_finetune_dataset():
         status_code=404,
         media_type="application/json"
     )
+
+# =========================================================================
+# 5. CENTRAL MULTI-DEVICE AUTHENTICATION & SECURITY VAULT STORAGE
+# =========================================================================
+VAULT_PERSIST_FILE = ROOT_DIR / "data" / "central_vault.json"
+
+def load_central_vault() -> dict:
+    if VAULT_PERSIST_FILE.exists():
+        try:
+            with open(VAULT_PERSIST_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Vault] Error reading vault file: {e}")
+    return {
+        "initialized": True,
+        "resigned": False,
+        "vault": None
+    }
+
+def save_central_vault(state: dict):
+    try:
+        VAULT_PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(VAULT_PERSIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"[Vault] Error writing vault file: {e}")
+
+global_vault_state = load_central_vault()
+
+@app.get("/api/vault")
+def get_central_vault():
+    return global_vault_state
+
+@app.post("/api/vault")
+async def update_central_vault(payload: dict):
+    global global_vault_state
+    action = payload.get("action")
+    if action == "resign":
+        global_vault_state = {
+            "initialized": False,
+            "resigned": True,
+            "resignedAt": payload.get("timestamp") or "",
+            "vault": None
+        }
+        save_central_vault(global_vault_state)
+        await broadcast_message({
+            "type": "SECURITY_RESIGNATION",
+            "message": "Incident Commander has resigned. All master credentials revoked."
+        })
+        return {"status": "resigned", "initialized": False, "resigned": True}
+
+    if action in ("save", "initialize") or "vault" in payload:
+        v = payload.get("vault") or payload
+        global_vault_state = {
+            "initialized": True,
+            "resigned": False,
+            "vault": v
+        }
+        save_central_vault(global_vault_state)
+        await broadcast_message({
+            "type": "VAULT_UPDATED",
+            "vault": v
+        })
+        return {"status": "saved", "initialized": True, "resigned": False, "vault": v}
+
+    return global_vault_state
+
