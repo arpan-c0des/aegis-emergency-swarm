@@ -1,50 +1,148 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
-interface EvacuationPayload {
-  police?: number;
-  fire?: number;
-  ambulance?: number;
-  service?: 'police' | 'fire' | 'ambulance';
-  delta?: number;
-  updatedBy?: string;
+interface EvacuationTally {
+  police: number;
+  fire: number;
+  ambulance: number;
+  total: number;
+  lastUpdatedBy: string;
+  lastDelta: number;
+  updatedAt: string;
 }
 
-let serverEvacuationState = {
+const DEFAULT_EVACUATION: EvacuationTally = {
   police: 46,
   fire: 54,
   ambulance: 42,
   total: 142,
   lastUpdatedBy: 'C2 Central Dispatch',
-  updatedAt: new Date().toISOString()
+  lastDelta: 0,
+  updatedAt: '2026-11-17T00:00:00.000Z'
 };
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
+const CACHE_FILE = path.join(os.tmpdir(), 'aegis_evacuation_state.json');
+
+declare global {
+  var __AEGIS_EVACUATION_STATE__: EvacuationTally | undefined;
+}
+
+function loadLocalCache(): EvacuationTally {
+  if (global.__AEGIS_EVACUATION_STATE__) {
+    return global.__AEGIS_EVACUATION_STATE__;
+  }
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const data = fs.readFileSync(CACHE_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (parsed && typeof parsed.total === 'number') {
+        global.__AEGIS_EVACUATION_STATE__ = parsed;
+        return parsed;
+      }
+    }
+  } catch (_) {}
+  global.__AEGIS_EVACUATION_STATE__ = DEFAULT_EVACUATION;
+  return DEFAULT_EVACUATION;
+}
+
+function saveLocalCache(state: EvacuationTally) {
+  global.__AEGIS_EVACUATION_STATE__ = state;
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (_) {}
+}
+
+async function fetchRemoteEvacuation(): Promise<EvacuationTally | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`${BACKEND_URL}/api/evacuation`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && typeof data.total === 'number') {
+      saveLocalCache(data);
+      return data;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function pushRemoteEvacuation(payload: any): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    await fetch(`${BACKEND_URL}/api/evacuation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } catch (_) {}
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
+  let currentState = loadLocalCache();
 
   if (req.method === 'GET') {
-    return res.status(200).json(serverEvacuationState);
+    const remote = await fetchRemoteEvacuation();
+    if (remote) currentState = remote;
+    return res.status(200).json(currentState);
   }
 
   if (req.method === 'POST') {
-    const body: EvacuationPayload = req.body || {};
-    
-    if (body.service && typeof body.delta === 'number') {
-      const s = body.service;
-      serverEvacuationState[s] = Math.max(0, serverEvacuationState[s] + body.delta);
+    const body = req.body || {};
+    const service = body.service;
+    const count = body.count;
+    const delta = body.delta;
+    const updatedBy = body.updatedBy || 'Field Personnel';
+
+    let police = currentState.police;
+    let fire = currentState.fire;
+    let ambulance = currentState.ambulance;
+
+    if (service === 'police') {
+      if (typeof count === 'number') police = Math.max(0, count);
+      else if (typeof delta === 'number') police = Math.max(0, police + delta);
+    } else if (service === 'fire') {
+      if (typeof count === 'number') fire = Math.max(0, count);
+      else if (typeof delta === 'number') fire = Math.max(0, fire + delta);
+    } else if (service === 'ambulance') {
+      if (typeof count === 'number') ambulance = Math.max(0, count);
+      else if (typeof delta === 'number') ambulance = Math.max(0, ambulance + delta);
     } else {
-      if (typeof body.police === 'number') serverEvacuationState.police = Math.max(0, body.police);
-      if (typeof body.fire === 'number') serverEvacuationState.fire = Math.max(0, body.fire);
-      if (typeof body.ambulance === 'number') serverEvacuationState.ambulance = Math.max(0, body.ambulance);
+      if (typeof body.police === 'number') police = Math.max(0, body.police);
+      if (typeof body.fire === 'number') fire = Math.max(0, body.fire);
+      if (typeof body.ambulance === 'number') ambulance = Math.max(0, body.ambulance);
     }
 
-    serverEvacuationState.total = 
-      serverEvacuationState.police + serverEvacuationState.fire + serverEvacuationState.ambulance;
-    serverEvacuationState.lastUpdatedBy = body.updatedBy || 'Field Personnel';
-    serverEvacuationState.updatedAt = new Date().toISOString();
+    const total = police + fire + ambulance;
+    const nextState: EvacuationTally = {
+      police,
+      fire,
+      ambulance,
+      total,
+      lastUpdatedBy: updatedBy,
+      lastDelta: typeof delta === 'number' ? delta : 0,
+      updatedAt: new Date().toISOString()
+    };
+
+    saveLocalCache(nextState);
+    await pushRemoteEvacuation(body);
 
     return res.status(200).json({
       status: 'success',
-      data: serverEvacuationState
+      data: nextState
     });
   }
 

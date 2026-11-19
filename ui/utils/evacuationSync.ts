@@ -56,6 +56,59 @@ export function getStoredEvacuationState(): EvacuationTallyState {
   }
 }
 
+/**
+ * Asynchronously push updated evacuation state to the central server so all other devices receive it
+ */
+export async function pushEvacuationToServer(payload: {
+  service?: EvacuationServiceType;
+  count?: number;
+  delta?: number;
+  police?: number;
+  fire?: number;
+  ambulance?: number;
+  updatedBy?: string;
+}): Promise<void> {
+  try {
+    await fetch('/api/evacuation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.warn('[Evacuation] Failed to push to central server:', err);
+  }
+}
+
+/**
+ * Fetch latest global evacuation tally from the central server
+ */
+export async function fetchEvacuationFromServer(): Promise<EvacuationTallyState | null> {
+  try {
+    const res = await fetch('/api/evacuation', {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && typeof data.total === 'number') {
+      const current = getStoredEvacuationState();
+      if (
+        data.police !== current.police ||
+        data.fire !== current.fire ||
+        data.ambulance !== current.ambulance ||
+        data.total !== current.total
+      ) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail: data }));
+        }
+      }
+      return data;
+    }
+  } catch (_) {}
+  return null;
+}
+
 export function saveEvacuationState(
   updates: Partial<Record<EvacuationServiceType, number>>,
   updatedBy: string = 'Field Personnel',
@@ -81,6 +134,16 @@ export function saveEvacuationState(
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
     window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail: newState }));
+
+    // Real-time server push for multi-device sync
+    pushEvacuationToServer({
+      police,
+      fire,
+      ambulance,
+      updatedBy,
+      delta
+    }).catch(() => {});
+
     return newState;
   } catch (e) {
     console.error('Failed to persist evacuation state:', e);
@@ -110,24 +173,45 @@ export function incrementServiceEvacuation(
 
 /**
  * React hook that connects components to the real-time evacuation tracking system.
- * Updates dynamically across windows and tabs when drivers log evacuations.
+ * Continuously polls and updates dynamically across all devices, windows, and tabs.
  */
-export function useEvacuationSync() {
+export function useEvacuationSync(pollIntervalMs: number = 2500) {
   const [evacuationState, setEvacuationState] = useState<EvacuationTallyState>(DEFAULT_EVACUATION_STATE);
 
   useEffect(() => {
-    // 1. Initial read from persistent store
+    // 1. Initial read from local cache
     const stored = getStoredEvacuationState();
     setEvacuationState(stored);
 
-    // 2. Listen to same-tab CustomEvents
+    // Initial fetch from central server
+    fetchEvacuationFromServer().then((srv) => {
+      if (srv) setEvacuationState(srv);
+    });
+
+    // 2. Active multi-device polling
+    const interval = setInterval(() => {
+      fetchEvacuationFromServer().then((srv) => {
+        if (srv) setEvacuationState(srv);
+      });
+    }, pollIntervalMs);
+
+    // Instant refresh when browser tab regains focus or reconnects
+    const handleFocus = () => {
+      fetchEvacuationFromServer().then((srv) => {
+        if (srv) setEvacuationState(srv);
+      });
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+
+    // 3. Listen to same-tab CustomEvents
     const handleCustomUpdate = (e: any) => {
       if (e.detail && typeof e.detail.total === 'number') {
         setEvacuationState(e.detail);
       }
     };
 
-    // 3. Listen to cross-tab storage events
+    // 4. Listen to cross-tab storage events
     const handleStorageUpdate = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
@@ -152,10 +236,13 @@ export function useEvacuationSync() {
     window.addEventListener('storage', handleStorageUpdate);
 
     return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
       window.removeEventListener(UPDATE_EVENT, handleCustomUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
     };
-  }, []);
+  }, [pollIntervalMs]);
 
   const incrementCount = useCallback((service: EvacuationServiceType, delta: number, updatedBy?: string) => {
     const updated = incrementServiceEvacuation(service, delta, updatedBy);

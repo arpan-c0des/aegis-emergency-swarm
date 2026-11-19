@@ -393,3 +393,91 @@ async def update_central_vault(payload: dict):
 
     return global_vault_state
 
+# =========================================================================
+# 6. CENTRAL MULTI-DEVICE EVACUATION & HOSPITAL BED SYNCHRONIZATION
+# =========================================================================
+@app.get("/api/hospitals")
+def get_hospitals_beds():
+    h1 = orchestrator.state.hospitals.get("H1")
+    h2 = orchestrator.state.hospitals.get("H2")
+    import datetime
+    return {
+        "H1": h1.available_beds if h1 else 28,
+        "H2": h2.available_beds if h2 else 12,
+        "updatedAt": datetime.datetime.utcnow().isoformat() + "Z"
+    }
+
+EVAC_PERSIST_FILE = ROOT_DIR / "data" / "central_evacuation.json"
+
+def load_central_evacuation() -> dict:
+    if EVAC_PERSIST_FILE.exists():
+        try:
+            with open(EVAC_PERSIST_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Evacuation] Error reading evacuation file: {e}")
+    return {
+        "police": 46,
+        "fire": 54,
+        "ambulance": 42,
+        "total": 142,
+        "lastUpdatedBy": "C2 Central Dispatch",
+        "lastDelta": 0,
+        "updatedAt": "2026-11-17T00:00:00.000Z"
+    }
+
+def save_central_evacuation(state: dict):
+    try:
+        EVAC_PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(EVAC_PERSIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"[Evacuation] Error writing evacuation file: {e}")
+
+global_evacuation_state = load_central_evacuation()
+
+@app.get("/api/evacuation")
+def get_evacuation_state():
+    return global_evacuation_state
+
+@app.post("/api/evacuation")
+async def update_evacuation_state(payload: dict):
+    global global_evacuation_state
+    service = payload.get("service")
+    count = payload.get("count")
+    delta = payload.get("delta")
+    updated_by = payload.get("updatedBy", "Field Personnel")
+
+    if service in ("police", "fire", "ambulance"):
+        if count is not None:
+            global_evacuation_state[service] = max(0, int(count))
+        elif delta is not None:
+            global_evacuation_state[service] = max(0, global_evacuation_state.get(service, 0) + int(delta))
+    else:
+        if "police" in payload and payload["police"] is not None:
+            global_evacuation_state["police"] = max(0, int(payload["police"]))
+        if "fire" in payload and payload["fire"] is not None:
+            global_evacuation_state["fire"] = max(0, int(payload["fire"]))
+        if "ambulance" in payload and payload["ambulance"] is not None:
+            global_evacuation_state["ambulance"] = max(0, int(payload["ambulance"]))
+
+    global_evacuation_state["total"] = (
+        global_evacuation_state.get("police", 0) +
+        global_evacuation_state.get("fire", 0) +
+        global_evacuation_state.get("ambulance", 0)
+    )
+    global_evacuation_state["lastUpdatedBy"] = updated_by
+    global_evacuation_state["lastDelta"] = int(delta) if delta is not None else 0
+    import datetime
+    global_evacuation_state["updatedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+
+    save_central_evacuation(global_evacuation_state)
+
+    await broadcast_message({
+        "type": "EVACUATION_UPDATE",
+        "data": global_evacuation_state
+    })
+
+    return {"status": "success", "data": global_evacuation_state}
+
+
