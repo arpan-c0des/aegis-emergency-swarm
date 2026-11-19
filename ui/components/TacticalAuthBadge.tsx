@@ -92,12 +92,12 @@ export const TacticalAuthBadge: React.FC<Props> = ({ className = '', showDriverL
         </button>
       )}
 
-      {/* Logout Button */}
+      {/* Normal Exit (Logout Button) */}
       <button
         type="button"
         onClick={logout}
         className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#27272A]/80 border border-[#3F3F46] text-[#A1A1AA] hover:text-white hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400 transition text-[11px] font-bold"
-        title="Sign out of Aegis"
+        title="Sign out of Aegis on this device (Normal Exit - preserves system passwords)"
       >
         <LogOut size={13} />
         <span className="hidden md:inline">EXIT</span>

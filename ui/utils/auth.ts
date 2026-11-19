@@ -1,7 +1,8 @@
 /**
  * AEGIS Emergency Response Swarm - Cryptographic Authentication & RBAC Engine
  * Provides role-based access control, salted cryptographic password hashing,
- * persistent credential vault management, and route authorization.
+ * persistent credential vault management, centralized server synchronization,
+ * and route authorization.
  */
 
 export type UserRole =
@@ -149,6 +150,67 @@ export interface UserSession {
 
 const VAULT_STORAGE_KEY = 'aegis_master_security_vault_v1';
 const SESSION_STORAGE_KEY = 'aegis_auth_session_v1';
+const RESIGNED_STORAGE_KEY = 'aegis_commander_resigned_v1';
+
+// Pre-seeded master credentials matching the pre-filled tactical passwords
+export const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
+  initialized: true,
+  version: '1.0.0-AEGIS-SECURE',
+  activatedAt: '2026-11-17T00:00:00.000Z',
+  activatedBy: 'Incident Commander (EOC Gold Command)',
+  credentials: {
+    incident_commander: {
+      roleId: 'incident_commander',
+      salt: 'c0mm4nd3r_s4lt_k0lk4t4_2026_aegis',
+      hash: '6a9540cddf003c5e8b83411b051764566c7caba4729b05cfe798338d33a4e32e',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    },
+    fleet_operator: {
+      roleId: 'fleet_operator',
+      salt: 'fl33t_0p3r4t0r_s4lt_2026_aegis_sec',
+      hash: '3ebe285e91ebfb04487447d7baf45df5fd5b93d965bb1154c124caa548a19e58',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    },
+    hospital_staff: {
+      roleId: 'hospital_staff',
+      salt: 'h0sp1t4l_b3d_s4lt_2026_aegis_intake',
+      hash: '76b160e0dba2794ac012f7b1b5f39b21b24e4c46e384bcffe341e4824fdf1507',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    },
+    driver_police: {
+      roleId: 'driver_police',
+      salt: 'p0l1c3_dr1v3r_s4lt_2026_aegis_pol02',
+      hash: '9771ab567afe6ae73bf594a282201ba22ee7e3512cf7adb556cfc1ab0493b990',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    },
+    driver_fire: {
+      roleId: 'driver_fire',
+      salt: 'f1r3_dr1v3r_s4lt_2026_aegis_fire03',
+      hash: '620c0d52018045ecb99a4f72399a177969d2640d7795e2a3e0c962502fb9f567',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    },
+    driver_ambulance: {
+      roleId: 'driver_ambulance',
+      salt: '4mb_dr1v3r_s4lt_2026_aegis_amb07',
+      hash: '0f8fd069ffff4c067704f488c118777372f65420c2747bca657c00dbd24e80c2',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      updatedBy: 'Incident Commander'
+    }
+  },
+  auditLog: [
+    {
+      timestamp: '2026-11-17T00:00:00.000Z',
+      event: 'SYSTEM_CENTRAL_VAULT_PROVISIONED',
+      role: 'incident_commander',
+      actor: 'Incident Commander (EOC Gold Command)'
+    }
+  ]
+};
 
 /**
  * Generate cryptographically secure random hexadecimal salt
@@ -187,32 +249,46 @@ export async function hashPasswordWithSalt(password: string, salt: string): Prom
 }
 
 /**
- * Check if the Master Security Vault has been initialized for the first time
+ * Check if the Master Security Vault has been initialized.
+ * Defaults to true for any device unless the Commander has explicitly resigned.
  */
 export function isVaultInitialized(): boolean {
   if (typeof window === 'undefined') return true;
   try {
+    if (localStorage.getItem(RESIGNED_STORAGE_KEY) === 'true') {
+      return false;
+    }
     const raw = localStorage.getItem(VAULT_STORAGE_KEY);
-    if (!raw) return false;
+    if (!raw) {
+      // Default pre-seeded vault is initialized by default
+      return true;
+    }
     const parsed: MasterCredentialVault = JSON.parse(raw);
     return Boolean(parsed && parsed.initialized && parsed.credentials && parsed.credentials.incident_commander);
   } catch (e) {
-    return false;
+    return true;
   }
 }
 
 /**
- * Load the active vault from storage
+ * Load the active vault from storage or return default pre-seeded vault
  */
 export function loadMasterVault(): MasterCredentialVault | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') return DEFAULT_PRESEEDED_VAULT;
   try {
+    if (localStorage.getItem(RESIGNED_STORAGE_KEY) === 'true') {
+      return null;
+    }
     const raw = localStorage.getItem(VAULT_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      // Initialize with default pre-seeded vault
+      saveMasterVault(DEFAULT_PRESEEDED_VAULT);
+      return DEFAULT_PRESEEDED_VAULT;
+    }
     return JSON.parse(raw) as MasterCredentialVault;
   } catch (e) {
     console.error('Failed to parse Aegis Master Vault:', e);
-    return null;
+    return DEFAULT_PRESEEDED_VAULT;
   }
 }
 
@@ -222,10 +298,94 @@ export function loadMasterVault(): MasterCredentialVault | null {
 export function saveMasterVault(vault: MasterCredentialVault): void {
   if (typeof window === 'undefined') return;
   try {
+    localStorage.removeItem(RESIGNED_STORAGE_KEY);
     localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(vault));
   } catch (e) {
     console.error('Failed to persist Aegis Master Vault:', e);
   }
+}
+
+/**
+ * Fetch centralized vault state from server to sync multi-device state
+ */
+export async function syncVaultWithServer(): Promise<{
+  initialized: boolean;
+  resigned: boolean;
+  vault: MasterCredentialVault | null;
+}> {
+  try {
+    const res = await fetch('/api/vault', {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch /api/vault: ${res.statusText}`);
+    }
+    const data = await res.json();
+
+    if (data.resigned || !data.initialized) {
+      // System has been resigned! Wipe local state
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(RESIGNED_STORAGE_KEY, 'true');
+        localStorage.removeItem(VAULT_STORAGE_KEY);
+        clearSession();
+      }
+      return { initialized: false, resigned: true, vault: null };
+    }
+
+    if (data.initialized && data.vault) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(RESIGNED_STORAGE_KEY);
+        saveMasterVault(data.vault);
+      }
+      return { initialized: true, resigned: false, vault: data.vault };
+    }
+  } catch (err) {
+    console.warn('[Aegis Auth] Central vault sync offline/failed, using local vault:', err);
+  }
+
+  const localVault = loadMasterVault();
+  const initialized = isVaultInitialized();
+  return { initialized, resigned: !initialized, vault: localVault };
+}
+
+/**
+ * Push updated vault to server so all other devices receive the changes
+ */
+export async function syncVaultToServer(vault: MasterCredentialVault): Promise<boolean> {
+  try {
+    const res = await fetch('/api/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', vault })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Aegis Auth] Failed to push vault to server:', err);
+    return false;
+  }
+}
+
+/**
+ * Commander Resignation: revokes master credentials system-wide on server and client
+ */
+export async function resignCommanderOnServer(): Promise<boolean> {
+  try {
+    await fetch('/api/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resign' })
+    });
+  } catch (err) {
+    console.warn('[Aegis Auth] Failed to notify server of commander resignation:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(RESIGNED_STORAGE_KEY, 'true');
+    localStorage.removeItem(VAULT_STORAGE_KEY);
+    clearSession();
+  }
+  return true;
 }
 
 /**
@@ -252,7 +412,7 @@ export async function initializeMasterVault(
       salt,
       hash,
       updatedAt: now,
-      updatedBy: 'Incident Commander (First-Time Activation)'
+      updatedBy: 'Incident Commander (System Setup)'
     };
   }
 
@@ -279,6 +439,7 @@ export async function initializeMasterVault(
   };
 
   saveMasterVault(vault);
+  await syncVaultToServer(vault);
   return vault;
 }
 
@@ -286,7 +447,11 @@ export async function initializeMasterVault(
  * Verify credentials for a specific role
  */
 export async function verifyRoleCredentials(role: UserRole, plainPassword: string): Promise<boolean> {
-  const vault = loadMasterVault();
+  let vault = loadMasterVault();
+  if (!vault || !vault.initialized) {
+    const syncRes = await syncVaultWithServer();
+    vault = syncRes.vault;
+  }
   if (!vault || !vault.initialized) return false;
 
   const cred = vault.credentials[role];
@@ -333,6 +498,7 @@ export async function updateRolePasswordByCommander(
   });
 
   saveMasterVault(vault);
+  await syncVaultToServer(vault);
   return true;
 }
 

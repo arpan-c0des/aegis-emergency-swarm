@@ -13,7 +13,9 @@ import {
   getActiveSession,
   createActiveSession,
   clearSession,
-  isRouteAuthorizedForRole
+  isRouteAuthorizedForRole,
+  syncVaultWithServer,
+  resignCommanderOnServer
 } from '../utils/auth';
 
 interface AuthContextType {
@@ -27,6 +29,7 @@ interface AuthContextType {
   showSecurityModal: boolean;
   login: (role: UserRole, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  resignCommander: () => Promise<void>;
   initializeSystem: (passwords: Record<UserRole, string>) => Promise<void>;
   updateRolePassword: (targetRole: UserRole, newPass: string) => Promise<boolean>;
   openSecurityModal: () => void;
@@ -48,29 +51,68 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [showInitModal, setShowInitModal] = useState<boolean>(false);
   const [showSecurityModal, setShowSecurityModal] = useState<boolean>(false);
 
-  // Initialize auth state from browser storage on mount
+  // Initialize auth state from browser storage and sync with central server on mount
   useEffect(() => {
-    const initialized = isVaultInitialized();
-    setIsInitialized(initialized);
+    let isMounted = true;
 
-    if (!initialized) {
-      setShowInitModal(true);
-      setShowLoginModal(false);
-      setUser(null);
-    } else {
-      const activeVault = loadMasterVault();
-      setVault(activeVault);
-
+    const initAuth = async () => {
+      // 1. Initial fast local resolution
+      const localInitialized = isVaultInitialized();
+      const localVault = loadMasterVault();
       const session = getActiveSession();
-      if (session) {
-        setUser(session);
-        setShowLoginModal(false);
-      } else {
-        setUser(null);
-        setShowLoginModal(true);
+
+      if (isMounted) {
+        setIsInitialized(localInitialized);
+        setVault(localVault);
+        if (session) {
+          setUser(session);
+          setShowLoginModal(false);
+          setShowInitModal(false);
+        } else {
+          setUser(null);
+          if (localInitialized) {
+            setShowLoginModal(true);
+            setShowInitModal(false);
+          } else {
+            setShowInitModal(true);
+            setShowLoginModal(false);
+          }
+        }
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+
+      // 2. Multi-device sync with central server (/api/vault)
+      try {
+        const serverSync = await syncVaultWithServer();
+        if (!isMounted) return;
+
+        if (serverSync.resigned || !serverSync.initialized) {
+          // Commander has resigned across the network! Reset state and force setup modal
+          setIsInitialized(false);
+          setVault(null);
+          setUser(null);
+          setShowInitModal(true);
+          setShowLoginModal(false);
+        } else if (serverSync.initialized && serverSync.vault) {
+          setIsInitialized(true);
+          setVault(serverSync.vault);
+          setShowInitModal(false);
+          const currentSession = getActiveSession();
+          if (!currentSession) {
+            setUser(null);
+            setShowLoginModal(true);
+          }
+        }
+      } catch (e) {
+        console.warn('[Aegis Auth] Network sync warning:', e);
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Enforce Route Protection whenever user or route changes
@@ -79,6 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (!isInitialized) {
       setShowInitModal(true);
+      setShowLoginModal(false);
       return;
     }
 
@@ -118,13 +161,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setShowLoginModal(false);
 
     // ALWAYS navigate freshly to the designated default route for this role
-    // This ensures Commander lands on '/', Fleet Operator lands on clean '/fleet', and query params are not carried over
     const defaultRoute = ROLE_CONFIGS[selectedRole].defaultRoute;
     router.push(defaultRoute);
 
     return { success: true };
   };
 
+  // Normal exit: clears only local device session; master credentials remain active
   const logout = () => {
     clearSession();
     setUser(null);
@@ -136,13 +179,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Resign Commander: revokes credentials system-wide across all devices and triggers re-initialization
+  const resignCommander = async (): Promise<void> => {
+    await resignCommanderOnServer();
+    setUser(null);
+    setVault(null);
+    setIsInitialized(false);
+    setShowInitModal(true);
+    setShowLoginModal(false);
+    setShowSecurityModal(false);
+
+    if (router.pathname !== '/') {
+      router.replace('/');
+    }
+  };
+
   const initializeSystem = async (passwords: Record<UserRole, string>): Promise<void> => {
     const newVault = await initializeMasterVault(passwords);
     setVault(newVault);
     setIsInitialized(true);
     setShowInitModal(false);
 
-    // Automatically log in as Incident Commander upon successful first-time activation
+    // Automatically log in as Incident Commander upon successful activation
     const commanderSession = createActiveSession('incident_commander');
     setUser(commanderSession);
     setShowLoginModal(false);
@@ -172,6 +230,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         showSecurityModal,
         login,
         logout,
+        resignCommander,
         initializeSystem,
         updateRolePassword,
         openSecurityModal: () => setShowSecurityModal(true),
