@@ -6,7 +6,8 @@ import { useRouter } from 'next/router';
 import { 
   Truck, Navigation, AlertTriangle, Fuel, ArrowRight, MapPin, 
   ShieldAlert, Sparkles, Shield, Clock, Activity, Check, ExternalLink, Radio, CloudSun,
-  Zap, CornerDownRight, RotateCcw, Layers, Droplets, Wind, RefreshCw, Lock, Volume2, Siren, Flame, Ambulance
+  Zap, CornerDownRight, RotateCcw, Layers, Droplets, Wind, RefreshCw, Lock, Volume2, Siren, Flame, Ambulance,
+  HeartPulse, Plus, Minus, Users
 } from 'lucide-react';
 import { 
   computeBidirectionalAStar, 
@@ -23,6 +24,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 import { ROLE_CONFIGS, UserRole } from '../utils/auth';
+import { useEvacuationSync, EvacuationServiceType } from '../utils/evacuationSync';
 
 // Dynamically import Kolkata Leaflet Fleet Map to prevent SSR window issues
 const KolkataFleetMap = dynamic(() => import('../components/KolkataFleetMap'), {
@@ -89,6 +91,45 @@ export default function FleetPage() {
   const [clock, setClock] = useState('');
   const [backendOnline, setBackendOnline] = useState(true);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // Real-time Dynamic Civilian Evacuation Intake System
+  const { 
+    evacuationState, 
+    totalEvacuated, 
+    incrementCount, 
+    updateCount 
+  } = useEvacuationSync();
+  const [evacFeedback, setEvacFeedback] = useState<string>('');
+  const [customEvacInput, setCustomEvacInput] = useState<string>('');
+
+  const driverService: EvacuationServiceType = useMemo(() => {
+    if (activeDriverRole === 'driver_police') return 'police';
+    if (activeDriverRole === 'driver_fire') return 'fire';
+    return 'ambulance';
+  }, [activeDriverRole]);
+
+  const handleDriverIncrement = (delta: number) => {
+    incrementCount(driverService, delta, `${lockedUnitForDriver} Field Crew`);
+    setEvacFeedback(`Logged ${delta > 0 ? `+${delta}` : delta} civilians evacuated.`);
+    setTimeout(() => setEvacFeedback(''), 3500);
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseInt(customEvacInput, 10);
+    if (!isNaN(val) && val >= 0) {
+      updateCount(driverService, val, `${lockedUnitForDriver} Field Crew`);
+      setEvacFeedback(`Unit evacuation tally updated to ${val}.`);
+      setCustomEvacInput('');
+      setTimeout(() => setEvacFeedback(''), 3500);
+    }
+  };
+
+  const handleOperatorIncrement = (service: EvacuationServiceType, delta: number) => {
+    incrementCount(service, delta, 'Fleet Dispatch Controller');
+    setEvacFeedback(`Logged ${delta > 0 ? `+${delta}` : delta} for ${service.toUpperCase()}.`);
+    setTimeout(() => setEvacFeedback(''), 3500);
+  };
 
   // Keep selectedUnit synchronized if driver mode is active
   useEffect(() => {
@@ -575,6 +616,202 @@ export default function FleetPage() {
                 </div>
               </div>
             )}
+
+            {/* Card: Civilian Evacuation Intake & Real-time Field Logger */}
+            <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[#27272A]">
+                <div className="flex items-center gap-2">
+                  <HeartPulse size={15} className="text-[#10B981] animate-pulse" />
+                  <span className="text-[11px] font-bold text-white uppercase tracking-wider">
+                    {isDriverMode 
+                      ? `${driverInstructions.unitTag.split('·')[0].trim()} · Civilian Evacuation Log` 
+                      : 'Civilian Evacuations · Fleet Intake'}
+                  </span>
+                </div>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold">
+                  {isDriverMode ? 'FIELD LOG ACTIVE' : 'C2 SYNCHRONIZED'}
+                </span>
+              </div>
+
+              {isDriverMode ? (
+                /* Driver Dedicated Log Panel */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-[#17171B] border border-[#27272A] p-3 rounded-xl">
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-[#71717A] tracking-wider block">
+                        Civilians Evacuated by Your Unit ({lockedUnitForDriver})
+                      </span>
+                      <div className="mono text-2xl font-bold text-[#10B981] mt-0.5">
+                        {evacuationState[driverService]} <span className="text-xs text-[#A1A1AA]">PERSONS CLEARED</span>
+                      </div>
+                    </div>
+                    <div 
+                      className="h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 border"
+                      style={{
+                        backgroundColor: `${driverInstructions.badgeColor}20`,
+                        borderColor: `${driverInstructions.badgeColor}50`,
+                      }}
+                    >
+                      {driverInstructions.icon}
+                    </div>
+                  </div>
+
+                  {/* Quick Action Buttons */}
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-[#71717A] tracking-wider block mb-1.5">
+                      Quick Log Evacuation
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5 font-mono text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleDriverIncrement(1)}
+                        className="py-2 rounded-lg bg-[#17171B] border border-[#27272A] text-white hover:border-[#10B981] hover:bg-[#10B981]/10 font-bold transition flex items-center justify-center gap-1 active:scale-95 shadow-sm"
+                      >
+                        <Plus size={11} className="text-[#10B981]" /> 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDriverIncrement(5)}
+                        className="py-2 rounded-lg bg-[#17171B] border border-[#27272A] text-white hover:border-[#10B981] hover:bg-[#10B981]/10 font-bold transition flex items-center justify-center gap-1 active:scale-95 shadow-sm"
+                      >
+                        <Plus size={11} className="text-[#10B981]" /> 5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDriverIncrement(10)}
+                        className="py-2 rounded-lg bg-[#17171B] border border-[#27272A] text-white hover:border-[#10B981] hover:bg-[#10B981]/10 font-bold transition flex items-center justify-center gap-1 active:scale-95 shadow-sm"
+                      >
+                        <Plus size={11} className="text-[#10B981]" /> 10
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDriverIncrement(-1)}
+                        className="py-2 rounded-lg bg-[#17171B] border border-[#27272A] text-[#71717A] hover:border-[#EF4444] hover:text-[#EF4444] font-bold transition flex items-center justify-center gap-1 active:scale-95 shadow-sm"
+                        title="Correct count (-1)"
+                      >
+                        <Minus size={11} /> 1
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Custom Number Input Form */}
+                  <form onSubmit={handleCustomSubmit} className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={customEvacInput}
+                      onChange={(e) => setCustomEvacInput(e.target.value)}
+                      placeholder="Set exact tally…"
+                      className="flex-1 bg-[#17171B] border border-[#27272A] rounded-xl px-3 py-1.5 text-xs text-white placeholder-[#52525B] outline-none focus:border-[#10B981] transition font-mono"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!customEvacInput}
+                      className="px-3 py-1.5 rounded-xl bg-[#10B981] text-black font-bold text-xs hover:bg-[#059669] transition active:scale-95 disabled:opacity-40"
+                    >
+                      Update
+                    </button>
+                  </form>
+
+                  {/* Feedback Banner */}
+                  {evacFeedback && (
+                    <div className="p-2 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] text-[10px] font-mono flex items-center gap-1.5">
+                      <Check size={12} className="shrink-0" />
+                      <span>{evacFeedback}</span>
+                    </div>
+                  )}
+
+                  {/* Fleet Total Progress Bar */}
+                  <div className="pt-2 border-t border-[#27272A] space-y-1.5 text-[10px]">
+                    <div className="flex justify-between text-[#A1A1AA]">
+                      <span>All Responding Services Total:</span>
+                      <span className="text-[#10B981] font-mono font-bold">{evacuationState.total} Evacuated</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-[#71717A]">
+                      <span className="p-1 rounded bg-[#17171B] border border-[#27272A] text-center">
+                        🚓 Police: <b className="text-white">{evacuationState.police}</b>
+                      </span>
+                      <span className="p-1 rounded bg-[#17171B] border border-[#27272A] text-center">
+                        🚒 Fire: <b className="text-white">{evacuationState.fire}</b>
+                      </span>
+                      <span className="p-1 rounded bg-[#17171B] border border-[#27272A] text-center">
+                        🚑 Medical: <b className="text-white">{evacuationState.ambulance}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Fleet Operator / Commander Multi-Service Overview */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-[#17171B] border border-[#27272A] p-3 rounded-xl">
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-[#71717A] tracking-wider block">
+                        Total Civilians Evacuated (All Responding Units)
+                      </span>
+                      <div className="mono text-2xl font-bold text-[#10B981] mt-0.5">
+                        {evacuationState.total} <span className="text-xs text-[#A1A1AA]">COMBINED RESCUES</span>
+                      </div>
+                    </div>
+                    <div className="text-right text-[10px] text-[#71717A] font-mono">
+                      <div>Live C2 Sync</div>
+                      <div className="text-[#10B981] font-bold">ONLINE</div>
+                    </div>
+                  </div>
+
+                  {/* Breakdown by Service with Quick Log Controls */}
+                  <div className="space-y-2">
+                    {[
+                      { id: 'police' as const, label: 'POL-02 · Police Interceptor', icon: '🚓', count: evacuationState.police, color: '#6366F1' },
+                      { id: 'fire' as const, label: 'FIRE-03 · Heavy Pumper Engine', icon: '🚒', count: evacuationState.fire, color: '#EF4444' },
+                      { id: 'ambulance' as const, label: 'AMB-07 · Paramedic Ambulance', icon: '🚑', count: evacuationState.ambulance, color: '#EC4899' },
+                    ].map((srv) => (
+                      <div key={srv.id} className="flex items-center justify-between p-2 rounded-xl bg-[#17171B] border border-[#27272A] text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{srv.icon}</span>
+                          <div>
+                            <div className="font-bold text-white leading-tight">{srv.label}</div>
+                            <div className="text-[9px] font-mono text-[#A1A1AA]">Evacuated: <b className="text-white">{srv.count}</b></div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 font-mono text-xs">
+                          <button
+                            type="button"
+                            onClick={() => handleOperatorIncrement(srv.id, 1)}
+                            className="px-2 py-1 rounded bg-[#27272A] text-white hover:bg-[#10B981] hover:text-black font-bold transition active:scale-95"
+                            title="Add 1 evacuated"
+                          >
+                            +1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOperatorIncrement(srv.id, 5)}
+                            className="px-2 py-1 rounded bg-[#27272A] text-white hover:bg-[#10B981] hover:text-black font-bold transition active:scale-95"
+                            title="Add 5 evacuated"
+                          >
+                            +5
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOperatorIncrement(srv.id, -1)}
+                            className="px-1.5 py-1 rounded bg-[#27272A] text-[#71717A] hover:bg-[#EF4444] hover:text-white font-bold transition active:scale-95"
+                            title="Subtract 1 (Correction)"
+                          >
+                            -1
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {evacFeedback && (
+                    <div className="p-2 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] text-[10px] font-mono flex items-center gap-1.5">
+                      <Check size={12} className="shrink-0" />
+                      <span>{evacFeedback}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Card: Live Weather & Adaptive Road Impact */}
             <div className="rounded-2xl border border-[#27272A] bg-[#131316] p-4 shadow-sm space-y-3">

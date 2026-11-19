@@ -13,6 +13,8 @@ import { fetchKolkataLiveWeather, LiveWeatherData, getSimulatedWeatherScenario }
 import { useAuth } from '../contexts/AuthContext';
 import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 import { useHospitalBeds } from '../utils/hospitalSync';
+import { useLiveResponseTime } from '../utils/liveResponseTime';
+import { useEvacuationSync } from '../utils/evacuationSync';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -104,6 +106,12 @@ export default function AegisTacticalCommandConsole() {
 
   // Real-Time Synchronized Hospital Bed Telemetry (Syncs with /hospitals)
   const { h1Beds, h2Beds, h1Total, h2Total, h1Pct, h2Pct } = useHospitalBeds(worldState);
+
+  // Authentic Dynamic Website Response Time Engine (Measures live HTTP RTT)
+  const { responseTimeMs, isPinging, statusLabel: pingStatusLabel } = useLiveResponseTime(4000);
+
+  // Dynamic Real-Time Civilian Evacuation Tally (Synchronized with Field Driver Cockpits)
+  const { evacuationState, totalEvacuated, incrementCount: incrementEvacuationCount } = useEvacuationSync();
   const [transcript, setTranscript] = useState<any[]>([]);
   const [commandPlan, setCommandPlan] = useState<string>("");
   const [broadcastSummary, setBroadcastSummary] = useState<string>("");
@@ -568,7 +576,8 @@ export default function AegisTacticalCommandConsole() {
       if (data.broadcast_summary) setBroadcastSummary(data.broadcast_summary);
       if (data.solana_audit) setSolanaAudit(data.solana_audit);
 
-      setCiviliansEvacuated((prev) => prev + 8);
+      incrementEvacuationCount('police', 4, 'C2 Automated Simulation Tick');
+      incrementEvacuationCount('ambulance', 4, 'C2 Automated Simulation Tick');
       setElapsedSeconds((prev) => prev + 47);
       setPolicyScore((prev) => Math.min(99, prev + 0.3));
 
@@ -585,7 +594,8 @@ export default function AegisTacticalCommandConsole() {
     } catch (e) {
       console.error(e);
       setSimulationTick((prev) => prev + 1);
-      setCiviliansEvacuated((prev) => prev + 8);
+      incrementEvacuationCount('police', 4, 'C2 Automated Simulation Tick');
+      incrementEvacuationCount('ambulance', 4, 'C2 Automated Simulation Tick');
       setElapsedSeconds((prev) => prev + 47);
       setPolicyScore((prev) => Math.min(99, prev + 0.3));
 
@@ -1316,14 +1326,21 @@ export default function AegisTacticalCommandConsole() {
 
           {/* Bottom 3 Metrics Cards */}
           <div className="grid grid-cols-3 gap-2 sm:gap-3 shrink-0">
-            {/* Response Time */}
+            {/* Response Time (Authentic Dynamic Live Website RTT) */}
             <div className="min-w-0 rounded-2xl border border-[#27272A] bg-[#131316] p-3 shadow-sm">
               <div className="flex items-center justify-between gap-1">
                 <p className="truncate text-[8px] font-bold tracking-widest text-[#71717A] sm:text-[10px]">RESPONSE TIME</p>
-                <Wind size={14} className="text-[#F59E0B]" />
+                <div className="flex items-center gap-1">
+                  <span className={`h-1.5 w-1.5 rounded-full ${isPinging ? 'bg-[#3B82F6] animate-ping' : 'bg-[#10B981]'}`} />
+                  <Zap size={14} className={responseTimeMs < 100 ? "text-[#10B981]" : responseTimeMs < 200 ? "text-[#F59E0B]" : "text-[#EF4444]"} />
+                </div>
               </div>
-              <p className="mono mt-1 text-[clamp(18px,3vw,28px)] font-bold leading-none">4m 12s</p>
-              <p className="mt-1.5 truncate text-[9px] text-[#A1A1AA] sm:text-[10px]">Target 5m 00s · −48s</p>
+              <p className="mono mt-1 text-[clamp(18px,3vw,28px)] font-bold leading-none text-white">
+                {responseTimeMs} <span className="text-xs font-normal text-[#A1A1AA]">ms</span>
+              </p>
+              <p className="mt-1.5 truncate text-[9px] text-[#A1A1AA] sm:text-[10px]" title="Authentic live HTTP round-trip latency measured dynamically to the website edge">
+                ⚡ Live Website RTT · {pingStatusLabel}
+              </p>
             </div>
 
             {/* Units Deployed */}
@@ -1336,14 +1353,18 @@ export default function AegisTacticalCommandConsole() {
               <p className="mt-1.5 truncate text-[9px] text-[#A1A1AA] sm:text-[10px]">3 sectors covered</p>
             </div>
 
-            {/* Civilians Evacuated */}
+            {/* Civilians Evacuated (Dynamic Live Tally Updated by Field Responders) */}
             <div className="min-w-0 rounded-2xl border border-[#27272A] bg-[#131316] p-3 shadow-sm">
               <div className="flex items-center justify-between gap-1">
                 <p className="truncate text-[8px] font-bold tracking-widest text-[#71717A] sm:text-[10px]">CIVILIANS EVACUATED</p>
                 <HeartPulse size={14} className="text-[#10B981]" />
               </div>
-              <p className="mono mt-1 text-[clamp(18px,3vw,28px)] font-bold leading-none">{civiliansEvacuated}</p>
-              <p className="mt-1.5 truncate text-[9px] text-[#A1A1AA] sm:text-[10px]">+8 this tick</p>
+              <p className="mono mt-1 text-[clamp(18px,3vw,28px)] font-bold leading-none text-[#10B981]">
+                {totalEvacuated}
+              </p>
+              <p className="mt-1.5 truncate text-[9px] text-[#A1A1AA] sm:text-[10px]" title={`Police: ${evacuationState.police} · Fire: ${evacuationState.fire} · Ambulance: ${evacuationState.ambulance}`}>
+                🚓 {evacuationState.police} · 🚒 {evacuationState.fire} · 🚑 {evacuationState.ambulance}
+              </p>
             </div>
           </div>
         </section>
