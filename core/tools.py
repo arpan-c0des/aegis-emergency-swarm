@@ -76,8 +76,7 @@ class SimulationTools:
                 "message": f"Hospital {hospital.name} has 0 available beds remaining."
             }
 
-        # Reserve bed and commit assignment
-        hospital.available_beds -= 1
+        # Commit patient assignment (Hospital beds are strictly managed by human triage personnel)
         patient.assigned_ambulance = ambulance.id
         patient.target_hospital = target_h_key
         patient.status = "in_transit"

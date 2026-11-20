@@ -106,7 +106,7 @@ export default function AegisTacticalCommandConsole() {
   const [worldState, setWorldState] = useState<any>(null);
 
   // Real-Time Synchronized Hospital Bed Telemetry (Syncs with /hospitals)
-  const { h1Beds, h2Beds, h1Total, h2Total, h1Pct, h2Pct } = useHospitalBeds(worldState);
+  const { h1Beds, h2Beds, h1Total, h2Total, h1Pct, h2Pct } = useHospitalBeds();
 
   // Authentic Dynamic Website Response Time Engine (Measures live HTTP RTT)
   const { responseTimeMs, isPinging, statusLabel: pingStatusLabel } = useLiveResponseTime(4000);
@@ -1157,6 +1157,8 @@ export default function AegisTacticalCommandConsole() {
                 hideInternalOverlays={true}
                 onSelectIncident={(incId) => setSelectedIncident(`INCIDENT #${incId}`)}
                 weatherData={weatherData}
+                h1Beds={h1Beds}
+                h2Beds={h2Beds}
               />
             </div>
 

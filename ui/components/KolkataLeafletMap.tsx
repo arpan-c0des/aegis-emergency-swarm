@@ -13,6 +13,8 @@ interface Props {
   hideInternalOverlays?: boolean;
   onSelectIncident?: (incidentId: string) => void;
   weatherData?: LiveWeatherData | null;
+  h1Beds?: number;
+  h2Beds?: number;
 }
 
 // Precise Kolkata Landmark Coordinates (WGS84 Lat/Lng)
@@ -76,7 +78,9 @@ export const KolkataLeafletMap: React.FC<Props> = ({
   cameraPreset = 'overview',
   hideInternalOverlays = true,
   onSelectIncident,
-  weatherData
+  weatherData,
+  h1Beds: propH1Beds,
+  h2Beds: propH2Beds
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletType.Map | null>(null);
@@ -383,7 +387,7 @@ export const KolkataLeafletMap: React.FC<Props> = ({
 
     // H1 Central Trauma (SSKM Hospital)
     const h1Coords = KOLKATA_COORDS['H1_Central'];
-    const h1Beds = hospitalsState.H1?.available_beds ?? 28;
+    const h1Beds = propH1Beds !== undefined ? propH1Beds : (hospitalsState.H1?.available_beds ?? 28);
     const h1Icon = L.divIcon({
       className: 'tactical-div-icon',
       html: `
@@ -408,7 +412,7 @@ export const KolkataLeafletMap: React.FC<Props> = ({
 
     // H2 St. Luke's Clinic (EM Bypass)
     const h2Coords = KOLKATA_COORDS['H2_West'];
-    const h2Beds = hospitalsState.H2?.available_beds ?? 12;
+    const h2Beds = propH2Beds !== undefined ? propH2Beds : (hospitalsState.H2?.available_beds ?? 12);
     const h2Icon = L.divIcon({
       className: 'tactical-div-icon',
       html: `

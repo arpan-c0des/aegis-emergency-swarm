@@ -14,14 +14,20 @@ export interface HospitalBedState {
   updatedAt: string;
 }
 
+// Module-level guard: tracks when a user made a manual edit on this client.
+// Any background poll that arrives within 4 seconds of a manual edit is rejected,
+// preventing stale remote responses from overwriting user typing or adjustments.
+let lastLocalEditTimestamp = 0;
+let pushTimeout: any = null;
+
 export function getStoredHospitalBeds(): HospitalBedState {
   if (typeof window === 'undefined') {
-    return { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: new Date().toISOString() };
+    return { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: '2026-11-17T00:00:00.000Z' };
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const initial = { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: new Date().toISOString() };
+      const initial = { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: '2026-11-17T00:00:00.000Z' };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
@@ -29,10 +35,10 @@ export function getStoredHospitalBeds(): HospitalBedState {
     return {
       H1: typeof parsed.H1 === 'number' ? Math.max(0, Math.min(H1_TOTAL_BEDS, parsed.H1)) : H1_DEFAULT_AVAILABLE,
       H2: typeof parsed.H2 === 'number' ? Math.max(0, Math.min(H2_TOTAL_BEDS, parsed.H2)) : H2_DEFAULT_AVAILABLE,
-      updatedAt: parsed.updatedAt || new Date().toISOString()
+      updatedAt: parsed.updatedAt || '2026-11-17T00:00:00.000Z'
     };
   } catch (e) {
-    return { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: new Date().toISOString() };
+    return { H1: H1_DEFAULT_AVAILABLE, H2: H2_DEFAULT_AVAILABLE, updatedAt: '2026-11-17T00:00:00.000Z' };
   }
 }
 
@@ -55,6 +61,11 @@ export async function pushHospitalBedsToServer(h1: number, h2: number): Promise<
  * Fetch latest global hospital bed counts from the central server
  */
 export async function fetchHospitalBedsFromServer(): Promise<HospitalBedState | null> {
+  // If user performed a manual edit in the last 4 seconds, ignore server polling to prevent jitter
+  if (Date.now() - lastLocalEditTimestamp < 4000) {
+    return getStoredHospitalBeds();
+  }
+
   try {
     const res = await fetch('/api/hospitals', {
       method: 'GET',
@@ -66,6 +77,14 @@ export async function fetchHospitalBedsFromServer(): Promise<HospitalBedState | 
       const current = getStoredHospitalBeds();
       const nextH1 = Math.max(0, Math.min(H1_TOTAL_BEDS, data.H1));
       const nextH2 = Math.max(0, Math.min(H2_TOTAL_BEDS, typeof data.H2 === 'number' ? data.H2 : current.H2));
+
+      // Guard against stale responses: only accept remote if remote updatedAt is >= local updatedAt
+      const localTime = new Date(current.updatedAt).getTime() || 0;
+      const remoteTime = data.updatedAt ? (new Date(data.updatedAt).getTime() || 0) : 0;
+
+      if (remoteTime < localTime) {
+        return current;
+      }
 
       if (nextH1 !== current.H1 || nextH2 !== current.H2) {
         if (typeof window !== 'undefined') {
@@ -87,6 +106,7 @@ export async function fetchHospitalBedsFromServer(): Promise<HospitalBedState | 
 export function saveHospitalBeds(h1: number, h2: number): void {
   if (typeof window === 'undefined') return;
   try {
+    lastLocalEditTimestamp = Date.now();
     const state: HospitalBedState = {
       H1: Math.max(0, Math.min(H1_TOTAL_BEDS, h1)),
       H2: Math.max(0, Math.min(H2_TOTAL_BEDS, h2)),
@@ -95,8 +115,11 @@ export function saveHospitalBeds(h1: number, h2: number): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail: state }));
 
-    // Real-time server push for multi-device sync
-    pushHospitalBedsToServer(state.H1, state.H2).catch(() => {});
+    // Debounce server pushes by 150ms to bundle rapid keystrokes or clicks
+    if (pushTimeout) clearTimeout(pushTimeout);
+    pushTimeout = setTimeout(() => {
+      pushHospitalBedsToServer(state.H1, state.H2).catch(() => {});
+    }, 150);
   } catch (e) {
     console.error('Failed to persist hospital beds:', e);
   }
@@ -104,9 +127,9 @@ export function saveHospitalBeds(h1: number, h2: number): void {
 
 /**
  * React hook that connects components to the real-time hospital bed tracking system.
- * Continuously polls and updates dynamically across all devices, windows, and tabs.
+ * Hospital bed counts are strictly managed by human user input (no automatic fluctuations).
  */
-export function useHospitalBeds(initialWorldState?: any, pollIntervalMs: number = 2500) {
+export function useHospitalBeds(_optionalLegacyWorldState?: any, pollIntervalMs: number = 3000) {
   const [h1Beds, setH1Beds] = useState<number>(H1_DEFAULT_AVAILABLE);
   const [h2Beds, setH2Beds] = useState<number>(H2_DEFAULT_AVAILABLE);
 
@@ -125,7 +148,7 @@ export function useHospitalBeds(initialWorldState?: any, pollIntervalMs: number 
       }
     });
 
-    // 2. Active multi-device polling
+    // 2. Active multi-device polling (respects local edit grace period)
     const interval = setInterval(() => {
       fetchHospitalBedsFromServer().then((srv) => {
         if (srv) {
@@ -178,15 +201,8 @@ export function useHospitalBeds(initialWorldState?: any, pollIntervalMs: number 
     };
   }, [pollIntervalMs]);
 
-  // Also synchronize when backend world state arrives from WebSocket
-  useEffect(() => {
-    if (initialWorldState?.hospitals) {
-      const h1Server = initialWorldState.hospitals.H1?.available_beds;
-      const h2Server = initialWorldState.hospitals.H2?.available_beds;
-      if (typeof h1Server === 'number') setH1Beds(h1Server);
-      if (typeof h2Server === 'number') setH2Beds(h2Server);
-    }
-  }, [initialWorldState?.hospitals]);
+  // Note: Simulation world state auto-overwrite has been removed.
+  // Beds only change when a person manually adds, subtracts, or edits the number.
 
   const updateBeds = useCallback((h1: number, h2: number) => {
     setH1Beds(h1);

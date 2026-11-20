@@ -110,7 +110,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let currentState = loadLocalCache();
   const cloud = await fetchCloudBeds();
-  if (cloud) currentState = cloud;
+  if (cloud) {
+    const localTime = new Date(currentState.updatedAt).getTime() || 0;
+    const cloudTime = new Date(cloud.updatedAt).getTime() || 0;
+    if (cloudTime >= localTime) {
+      currentState = cloud;
+    }
+  }
 
   if (req.method === 'GET') {
     return res.status(200).json(currentState);

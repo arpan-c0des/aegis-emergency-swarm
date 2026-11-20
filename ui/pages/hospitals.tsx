@@ -21,6 +21,25 @@ export default function HospitalsPage() {
   const [loading, setLoading] = useState(false);
   const [clock, setClock] = useState("");
 
+  // Local input states to ensure free, unjittered typing with zero fluctuation
+  const [h1Input, setH1Input] = useState<string>(String(h1Beds));
+  const [h2Input, setH2Input] = useState<string>(String(h2Beds));
+  const [isH1Focused, setIsH1Focused] = useState<boolean>(false);
+  const [isH2Focused, setIsH2Focused] = useState<boolean>(false);
+
+  // Sync local inputs only when not actively focused by user
+  useEffect(() => {
+    if (!isH1Focused) {
+      setH1Input(String(h1Beds));
+    }
+  }, [h1Beds, isH1Focused]);
+
+  useEffect(() => {
+    if (!isH2Focused) {
+      setH2Input(String(h2Beds));
+    }
+  }, [h2Beds, isH2Focused]);
+
   const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "https://aegis-backend-5fx3.onrender.com").replace(/\/$/, "");
 
   useEffect(() => {
@@ -35,8 +54,10 @@ export default function HospitalsPage() {
     setLoading(true);
     if (id === "H1") {
       updateH1(beds);
+      setH1Input(String(beds));
     } else {
       updateH2(beds);
+      setH2Input(String(beds));
     }
 
     try {
@@ -50,7 +71,6 @@ export default function HospitalsPage() {
           generator_status: "NOMINAL"
         })
       });
-      const data = await res.json();
       setStatusMsg(`Updated ${id} available capacity to ${beds} beds. Synchronized across C2 console and swarm.`);
     } catch (e) {
       console.error(e);
@@ -58,6 +78,32 @@ export default function HospitalsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const commitH1 = (forcedValue?: number) => {
+    const val = forcedValue !== undefined ? forcedValue : parseInt(h1Input, 10);
+    const safe = isNaN(val) ? 0 : Math.max(0, Math.min(h1Total, val));
+    updateHospital("H1", safe);
+  };
+
+  const commitH2 = (forcedValue?: number) => {
+    const val = forcedValue !== undefined ? forcedValue : parseInt(h2Input, 10);
+    const safe = isNaN(val) ? 0 : Math.max(0, Math.min(h2Total, val));
+    updateHospital("H2", safe);
+  };
+
+  const stepH1 = (delta: number) => {
+    const current = isH1Focused ? (parseInt(h1Input, 10) || 0) : h1Beds;
+    const next = Math.max(0, Math.min(h1Total, current + delta));
+    setH1Input(String(next));
+    updateHospital("H1", next);
+  };
+
+  const stepH2 = (delta: number) => {
+    const current = isH2Focused ? (parseInt(h2Input, 10) || 0) : h2Beds;
+    const next = Math.max(0, Math.min(h2Total, current + delta));
+    setH2Input(String(next));
+    updateHospital("H2", next);
   };
 
   return (
@@ -196,11 +242,33 @@ export default function HospitalsPage() {
                 <div className="flex items-center gap-2.5">
                   <Bed size={18} className="text-[#10B981]" />
                   <div>
-                    <label className="text-[9px] uppercase font-bold text-[#71717A] block">Available Beds</label>
+                    <label className="text-[9px] uppercase font-bold text-[#71717A] block">Available Beds (Max {h1Total})</label>
                     <input 
                       type="number"
-                      value={h1Beds}
-                      onChange={(e) => updateH1(parseInt(e.target.value) || 0)}
+                      min={0}
+                      max={h1Total}
+                      value={h1Input}
+                      onFocus={() => setIsH1Focused(true)}
+                      onBlur={() => {
+                        setIsH1Focused(false);
+                        commitH1();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          commitH1();
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setH1Input(raw);
+                        if (raw !== '') {
+                          const parsed = parseInt(raw, 10);
+                          if (!isNaN(parsed) && parsed >= 0 && parsed <= h1Total) {
+                            updateH1(parsed);
+                          }
+                        }
+                      }}
                       className="mono font-bold text-lg text-white bg-transparent outline-none w-20"
                     />
                   </div>
@@ -209,14 +277,16 @@ export default function HospitalsPage() {
                 {/* Quick Increment/Decrement */}
                 <div className="flex items-center gap-1.5">
                   <button 
-                    onClick={() => updateH1(Math.max(0, h1Beds - 1))}
+                    onClick={() => stepH1(-1)}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
+                    title="Decrease 1 bed"
                   >
                     <Minus size={13} />
                   </button>
                   <button 
-                    onClick={() => updateH1(Math.min(h1Total, h1Beds + 1))}
+                    onClick={() => stepH1(1)}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
+                    title="Increase 1 bed"
                   >
                     <Plus size={13} />
                   </button>
@@ -226,7 +296,7 @@ export default function HospitalsPage() {
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-1">
                 <button
-                  onClick={() => updateHospital("H1", h1Beds)}
+                  onClick={() => commitH1()}
                   disabled={loading}
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#10B981] text-black hover:bg-[#059669] transition shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
@@ -234,7 +304,10 @@ export default function HospitalsPage() {
                   <span>Update SSKM Hospital (H1)</span>
                 </button>
                 <button 
-                  onClick={() => updateHospital("H1", 28)}
+                  onClick={() => {
+                    setH1Input("28");
+                    commitH1(28);
+                  }}
                   className="px-3 py-2.5 rounded-xl border border-[#27272A] bg-[#131316] text-[11px] font-bold text-[#A1A1AA] hover:text-white hover:border-[#3F3F46] transition"
                   title="Reset to 28"
                 >
@@ -282,11 +355,33 @@ export default function HospitalsPage() {
                 <div className="flex items-center gap-2.5">
                   <Bed size={18} className="text-[#3B82F6]" />
                   <div>
-                    <label className="text-[9px] uppercase font-bold text-[#71717A] block">Available Beds</label>
+                    <label className="text-[9px] uppercase font-bold text-[#71717A] block">Available Beds (Max {h2Total})</label>
                     <input 
-                      type="number" 
-                      value={h2Beds}
-                      onChange={(e) => updateH2(parseInt(e.target.value) || 0)}
+                      type="number"
+                      min={0}
+                      max={h2Total}
+                      value={h2Input}
+                      onFocus={() => setIsH2Focused(true)}
+                      onBlur={() => {
+                        setIsH2Focused(false);
+                        commitH2();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          commitH2();
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setH2Input(raw);
+                        if (raw !== '') {
+                          const parsed = parseInt(raw, 10);
+                          if (!isNaN(parsed) && parsed >= 0 && parsed <= h2Total) {
+                            updateH2(parsed);
+                          }
+                        }
+                      }}
                       className="mono font-bold text-lg text-white bg-transparent outline-none w-20"
                     />
                   </div>
@@ -295,14 +390,16 @@ export default function HospitalsPage() {
                 {/* Quick Increment/Decrement */}
                 <div className="flex items-center gap-1.5">
                   <button 
-                    onClick={() => updateH2(Math.max(0, h2Beds - 1))}
+                    onClick={() => stepH2(-1)}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
+                    title="Decrease 1 bed"
                   >
                     <Minus size={13} />
                   </button>
                   <button 
-                    onClick={() => updateH2(Math.min(h2Total, h2Beds + 1))}
+                    onClick={() => stepH2(1)}
                     className="w-7 h-7 rounded-lg border border-[#27272A] bg-[#17171B] hover:border-[#3F3F46] flex items-center justify-center text-white transition"
+                    title="Increase 1 bed"
                   >
                     <Plus size={13} />
                   </button>
@@ -312,7 +409,7 @@ export default function HospitalsPage() {
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-1">
                 <button 
-                  onClick={() => updateHospital("H2", h2Beds)}
+                  onClick={() => commitH2()}
                   disabled={loading}
                   className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#3B82F6] text-white hover:bg-[#2563EB] transition shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
@@ -320,7 +417,10 @@ export default function HospitalsPage() {
                   <span>Update Apollo / St. Luke's (H2)</span>
                 </button>
                 <button 
-                  onClick={() => updateHospital("H2", 12)}
+                  onClick={() => {
+                    setH2Input("12");
+                    commitH2(12);
+                  }}
                   className="px-3 py-2.5 rounded-xl border border-[#27272A] bg-[#131316] text-[11px] font-bold text-[#A1A1AA] hover:text-white hover:border-[#3F3F46] transition"
                   title="Reset to 12"
                 >

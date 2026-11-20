@@ -245,8 +245,3 @@ class CityState:
             self.weather = "torrential_flash_flood"
             self.roads["Road_D4"] = "congested"
             self.patients["P_05"] = Patient(id="P_05", severity="serious", location="Sector_6B")
-
-        elif self.time_step >= 4:
-            # Bed status fluctuations as doctors admit and stabilize casualties
-            if self.hospitals["H1"].available_beds > 5:
-                self.hospitals["H1"].available_beds -= 1

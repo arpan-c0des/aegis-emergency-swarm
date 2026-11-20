@@ -41,6 +41,35 @@ voice_service = DispatchAudioService()
 snowflake_wh = SnowflakeWarehouse()
 solana_ledger = SolanaAuditLedger()
 
+HOSP_PERSIST_FILE = ROOT_DIR / "data" / "central_hospitals.json"
+
+def load_central_hospitals() -> dict:
+    if HOSP_PERSIST_FILE.exists():
+        try:
+            with open(HOSP_PERSIST_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Hospitals] Error reading hospitals file: {e}")
+    return {
+        "H1": 28,
+        "H2": 12,
+        "updatedAt": "2026-11-17T00:00:00.000Z"
+    }
+
+def save_central_hospitals(state: dict):
+    try:
+        HOSP_PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(HOSP_PERSIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        print(f"[Hospitals] Error writing hospitals file: {e}")
+
+_init_beds = load_central_hospitals()
+if "H1" in orchestrator.state.hospitals and "H1" in _init_beds:
+    orchestrator.state.hospitals["H1"].available_beds = _init_beds["H1"]
+if "H2" in orchestrator.state.hospitals and "H2" in _init_beds:
+    orchestrator.state.hospitals["H2"].available_beds = _init_beds["H2"]
+
 # Connected WebSocket clients for real-time dashboard streaming
 active_connections: List[WebSocket] = []
 
@@ -101,8 +130,13 @@ async def reset_simulation():
     """Resets the simulation back to initial genesis state and notifies all clients."""
     global orchestrator
     
-    # 1. Instantiate a clean world state and orchestrator
+    # 1. Instantiate a clean world state and orchestrator, preserving configured hospital bed counts
     orchestrator = SwarmOrchestrator()
+    _current_beds = load_central_hospitals()
+    if "H1" in orchestrator.state.hospitals and "H1" in _current_beds:
+        orchestrator.state.hospitals["H1"].available_beds = _current_beds["H1"]
+    if "H2" in orchestrator.state.hospitals and "H2" in _current_beds:
+        orchestrator.state.hospitals["H2"].available_beds = _current_beds["H2"]
     fresh_state = orchestrator.state.export_state_dict()
 
     # 2. Safely remove previous audio dispatch file if present
@@ -223,6 +257,14 @@ async def update_hospital_beds(payload: HospitalUpdatePayload):
     if key in orchestrator.state.hospitals:
         h = orchestrator.state.hospitals[key]
         h.available_beds = payload.available_beds
+        
+        # Persist hospital beds
+        import datetime
+        beds_data = load_central_hospitals()
+        beds_data[key] = payload.available_beds
+        beds_data["updatedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+        save_central_hospitals(beds_data)
+
         # Broadcast updated state so dashboard and 3D map update in real-time
         await broadcast_message({
             "type": "SIMULATION_UPDATE",
@@ -398,14 +440,8 @@ async def update_central_vault(payload: dict):
 # =========================================================================
 @app.get("/api/hospitals")
 def get_hospitals_beds():
-    h1 = orchestrator.state.hospitals.get("H1")
-    h2 = orchestrator.state.hospitals.get("H2")
-    import datetime
-    return {
-        "H1": h1.available_beds if h1 else 28,
-        "H2": h2.available_beds if h2 else 12,
-        "updatedAt": datetime.datetime.utcnow().isoformat() + "Z"
-    }
+    beds_data = load_central_hospitals()
+    return beds_data
 
 EVAC_PERSIST_FILE = ROOT_DIR / "data" / "central_evacuation.json"
 
