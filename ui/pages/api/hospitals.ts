@@ -15,6 +15,7 @@ const DEFAULT_BEDS: HospitalBedState = {
   updatedAt: '2026-11-17T00:00:00.000Z'
 };
 
+const CLOUD_HOSP_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a1f7de2e890020';
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
 const CACHE_FILE = path.join(os.tmpdir(), 'aegis_hospital_beds_state.json');
 
@@ -47,18 +48,19 @@ function saveLocalCache(state: HospitalBedState) {
   } catch (_) {}
 }
 
-async function fetchRemoteBeds(): Promise<HospitalBedState | null> {
+async function fetchCloudBeds(): Promise<HospitalBedState | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`${BACKEND_URL}/api/hospitals`, {
+    const res = await fetch(CLOUD_HOSP_URL, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' },
       signal: controller.signal
     });
     clearTimeout(timeout);
     if (!res.ok) return null;
-    const data = await res.json();
+    const body = await res.json();
+    const data = body?.data;
     if (data && typeof data.H1 === 'number') {
       const state: HospitalBedState = {
         H1: data.H1,
@@ -72,7 +74,24 @@ async function fetchRemoteBeds(): Promise<HospitalBedState | null> {
   return null;
 }
 
-async function pushRemoteBedUpdate(payload: any): Promise<void> {
+async function saveCloudBeds(state: HospitalBedState): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    await fetch(CLOUD_HOSP_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'aegis_hospital_beds',
+        data: state
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } catch (_) {}
+}
+
+async function forwardToRender(payload: any): Promise<void> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
@@ -90,10 +109,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   let currentState = loadLocalCache();
+  const cloud = await fetchCloudBeds();
+  if (cloud) currentState = cloud;
 
   if (req.method === 'GET') {
-    const remote = await fetchRemoteBeds();
-    if (remote) currentState = remote;
     return res.status(200).json(currentState);
   }
 
@@ -118,13 +137,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     saveLocalCache(nextState);
+    await saveCloudBeds(nextState);
 
-    // Forward to Render backend
     if (body.hospital_id && typeof body.available_beds === 'number') {
-      await pushRemoteBedUpdate(body);
+      forwardToRender(body).catch(() => {});
     } else {
-      await pushRemoteBedUpdate({ hospital_id: 'H1', available_beds: nextH1 });
-      await pushRemoteBedUpdate({ hospital_id: 'H2', available_beds: nextH2 });
+      forwardToRender({ hospital_id: 'H1', available_beds: nextH1 }).catch(() => {});
+      forwardToRender({ hospital_id: 'H2', available_beds: nextH2 }).catch(() => {});
     }
 
     return res.status(200).json({

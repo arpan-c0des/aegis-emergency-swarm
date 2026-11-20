@@ -23,6 +23,7 @@ const DEFAULT_EVACUATION: EvacuationTally = {
   updatedAt: '2026-11-17T00:00:00.000Z'
 };
 
+const CLOUD_EVAC_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a1f7de1c6b001f';
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
 const CACHE_FILE = path.join(os.tmpdir(), 'aegis_evacuation_state.json');
 
@@ -55,18 +56,19 @@ function saveLocalCache(state: EvacuationTally) {
   } catch (_) {}
 }
 
-async function fetchRemoteEvacuation(): Promise<EvacuationTally | null> {
+async function fetchCloudEvacuation(): Promise<EvacuationTally | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`${BACKEND_URL}/api/evacuation`, {
+    const res = await fetch(CLOUD_EVAC_URL, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' },
       signal: controller.signal
     });
     clearTimeout(timeout);
     if (!res.ok) return null;
-    const data = await res.json();
+    const body = await res.json();
+    const data = body?.data;
     if (data && typeof data.total === 'number') {
       saveLocalCache(data);
       return data;
@@ -75,7 +77,24 @@ async function fetchRemoteEvacuation(): Promise<EvacuationTally | null> {
   return null;
 }
 
-async function pushRemoteEvacuation(payload: any): Promise<void> {
+async function saveCloudEvacuation(state: EvacuationTally): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    await fetch(CLOUD_EVAC_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'aegis_central_evacuation',
+        data: state
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } catch (_) {}
+}
+
+async function forwardToRender(payload: any): Promise<void> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
@@ -93,10 +112,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   let currentState = loadLocalCache();
+  const cloud = await fetchCloudEvacuation();
+  if (cloud) currentState = cloud;
 
   if (req.method === 'GET') {
-    const remote = await fetchRemoteEvacuation();
-    if (remote) currentState = remote;
     return res.status(200).json(currentState);
   }
 
@@ -138,7 +157,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     saveLocalCache(nextState);
-    await pushRemoteEvacuation(body);
+    await saveCloudEvacuation(nextState);
+    forwardToRender(body).catch(() => {});
 
     return res.status(200).json({
       status: 'success',

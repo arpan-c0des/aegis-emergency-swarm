@@ -129,6 +129,8 @@ export interface MasterCredentialVault {
   version: string;
   activatedAt: string;
   activatedBy: string;
+  customized?: boolean;
+  isDefaultFallback?: boolean;
   credentials: Record<UserRole, RoleCredential>;
   auditLog: {
     timestamp: string;
@@ -158,6 +160,8 @@ export const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
   version: '1.0.0-AEGIS-SECURE',
   activatedAt: '2026-11-17T00:00:00.000Z',
   activatedBy: 'Incident Commander (EOC Gold Command)',
+  customized: false,
+  isDefaultFallback: true,
   credentials: {
     incident_commander: {
       roleId: 'incident_commander',
@@ -409,24 +413,46 @@ export async function syncVaultWithServer(): Promise<{
 
     if (data.initialized && data.vault) {
       const localVault = loadMasterVault();
-      
-      // If the local vault was customized by the Commander (e.g. newer timestamp), push it to server
-      const localIsCustom = localVault && 
-        localVault.activatedAt && 
-        localVault.activatedAt !== '2026-11-17T00:00:00.000Z' &&
-        (!data.vault.activatedAt || localVault.activatedAt > data.vault.activatedAt);
+      const serverVault = data.vault as MasterCredentialVault;
 
-      if (localIsCustom) {
+      // 1. Check if local vault has custom user passwords
+      const localIsCustom = Boolean(
+        localVault &&
+        (localVault.customized === true ||
+          (localVault.activatedAt && localVault.activatedAt !== '2026-11-17T00:00:00.000Z') ||
+          localVault.isDefaultFallback === false)
+      );
+
+      // 2. Check if server vault has custom user passwords
+      const serverIsCustom = Boolean(
+        serverVault &&
+        (serverVault.customized === true ||
+          (serverVault.activatedAt && serverVault.activatedAt !== '2026-11-17T00:00:00.000Z') ||
+          serverVault.isDefaultFallback === false)
+      );
+
+      // If local has custom passwords set by user, but server is only returning default fallback:
+      // NEVER overwrite local with default! Push local custom vault to server immediately!
+      if (localIsCustom && !serverIsCustom) {
         await syncVaultToServer(localVault!);
         return { initialized: true, resigned: false, vault: localVault };
       }
 
-      // Otherwise save the central server vault locally
+      // If server has custom passwords:
+      if (serverIsCustom) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(RESIGNED_STORAGE_KEY);
+          saveMasterVault(serverVault);
+        }
+        return { initialized: true, resigned: false, vault: serverVault };
+      }
+
+      // If neither is custom, keep local or server baseline
       if (typeof window !== 'undefined') {
         localStorage.removeItem(RESIGNED_STORAGE_KEY);
-        saveMasterVault(data.vault);
+        saveMasterVault(serverVault);
       }
-      return { initialized: true, resigned: false, vault: data.vault };
+      return { initialized: true, resigned: false, vault: serverVault };
     }
   } catch (err) {
     console.warn('[Aegis Auth] Central vault sync offline/failed, using local vault:', err);
@@ -492,7 +518,7 @@ export async function verifyRoleCredentials(role: UserRole, plainPassword: strin
     if (res.ok) {
       const data = await res.json();
       if (data.valid) {
-        if (data.vault) {
+        if (data.vault && (data.vault.customized || !loadMasterVault()?.customized)) {
           saveMasterVault(data.vault);
         }
         return true;
@@ -548,6 +574,8 @@ export async function initializeMasterVault(
     version: '1.0.0-AEGIS-SECURE',
     activatedAt: now,
     activatedBy: 'Incident Commander',
+    customized: true,
+    isDefaultFallback: false,
     credentials,
     auditLog: [
       {
@@ -590,6 +618,10 @@ export async function updateRolePasswordByCommander(
   const salt = generateCryptographicSalt(32);
   const hash = await hashPasswordWithSalt(newPassword, salt);
   const now = new Date().toISOString();
+
+  vault.customized = true;
+  vault.isDefaultFallback = false;
+  vault.activatedAt = now;
 
   vault.credentials[targetRole] = {
     roleId: targetRole,

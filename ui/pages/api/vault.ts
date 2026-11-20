@@ -25,6 +25,8 @@ export interface MasterCredentialVault {
   version: string;
   activatedAt: string;
   activatedBy: string;
+  customized?: boolean;
+  isDefaultFallback?: boolean;
   credentials: Record<UserRole, RoleCredential>;
   auditLog: {
     timestamp: string;
@@ -41,54 +43,56 @@ interface ServerVaultState {
   vault: MasterCredentialVault | null;
 }
 
-// Fallback pre-seeded master credentials
+// Default initial fallback (marked as isDefaultFallback: true)
 const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
   initialized: true,
   version: '1.0.0-AEGIS-SECURE',
   activatedAt: '2026-11-17T00:00:00.000Z',
-  activatedBy: 'Incident Commander (EOC Gold Command)',
+  activatedBy: 'System Baseline',
+  customized: false,
+  isDefaultFallback: true,
   credentials: {
     incident_commander: {
       roleId: 'incident_commander',
       salt: 'c0mm4nd3r_s4lt_k0lk4t4_2026_aegis',
       hash: '6a9540cddf003c5e8b83411b051764566c7caba4729b05cfe798338d33a4e32e',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     },
     fleet_operator: {
       roleId: 'fleet_operator',
       salt: 'fl33t_0p3r4t0r_s4lt_2026_aegis_sec',
       hash: '3ebe285e91ebfb04487447d7baf45df5fd5b93d965bb1154c124caa548a19e58',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     },
     hospital_staff: {
       roleId: 'hospital_staff',
       salt: 'h0sp1t4l_b3d_s4lt_2026_aegis_intake',
       hash: '76b160e0dba2794ac012f7b1b5f39b21b24e4c46e384bcffe341e4824fdf1507',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     },
     driver_police: {
       roleId: 'driver_police',
       salt: 'p0l1c3_dr1v3r_s4lt_2026_aegis_pol02',
       hash: '9771ab567afe6ae73bf594a282201ba22ee7e3512cf7adb556cfc1ab0493b990',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     },
     driver_fire: {
       roleId: 'driver_fire',
       salt: 'f1r3_dr1v3r_s4lt_2026_aegis_fire03',
       hash: '620c0d52018045ecb99a4f72399a177969d2640d7795e2a3e0c962502fb9f567',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     },
     driver_ambulance: {
       roleId: 'driver_ambulance',
       salt: '4mb_dr1v3r_s4lt_2026_aegis_amb07',
       hash: '0f8fd069ffff4c067704f488c118777372f65420c2747bca657c00dbd24e80c2',
       updatedAt: '2026-11-17T00:00:00.000Z',
-      updatedBy: 'Incident Commander'
+      updatedBy: 'System Baseline'
     }
   },
   auditLog: [
@@ -96,11 +100,12 @@ const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
       timestamp: '2026-11-17T00:00:00.000Z',
       event: 'SYSTEM_CENTRAL_VAULT_PROVISIONED',
       role: 'incident_commander',
-      actor: 'Incident Commander (EOC Gold Command)'
+      actor: 'System Baseline'
     }
   ]
 };
 
+const CLOUD_VAULT_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a1f7dbdce30018';
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
 const CACHE_FILE_PATH = path.join(os.tmpdir(), 'aegis_central_vault_state.json');
 
@@ -127,9 +132,7 @@ function loadLocalCachedState(): ServerVaultState {
         return parsed;
       }
     }
-  } catch (err) {
-    console.warn('[Vault API] Could not read cache file:', err);
-  }
+  } catch (_) {}
 
   const initialState: ServerVaultState = {
     initialized: true,
@@ -146,43 +149,82 @@ function saveLocalCachedState(state: ServerVaultState) {
   global.__AEGIS_SERVER_VAULT_STATE__ = state;
   try {
     fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[Vault API] Could not write cache file:', err);
-  }
+  } catch (_) {}
 }
 
-async function fetchRemoteBackendVault(): Promise<ServerVaultState | null> {
+/**
+ * Fetch permanent vault state from high-availability cloud storage
+ */
+async function fetchCloudVault(): Promise<ServerVaultState | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(`${BACKEND_URL}/api/vault`, {
+    const res = await fetch(CLOUD_VAULT_URL, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' },
       signal: controller.signal
     });
     clearTimeout(timeout);
     if (!res.ok) return null;
-    const data = await res.json();
-    if (data && (data.vault || data.resigned || data.initialized !== undefined)) {
-      const state: ServerVaultState = {
-        initialized: data.resigned ? false : Boolean(data.initialized),
-        resigned: Boolean(data.resigned),
-        resignedAt: data.resignedAt,
-        vault: data.resigned ? null : (data.vault || DEFAULT_PRESEEDED_VAULT)
-      };
-      saveLocalCachedState(state);
-      return state;
+    const body = await res.json();
+    const data = body?.data;
+    if (data) {
+      if (data.resigned) {
+        const state: ServerVaultState = {
+          initialized: false,
+          resigned: true,
+          resignedAt: data.resignedAt,
+          vault: null
+        };
+        saveLocalCachedState(state);
+        return state;
+      }
+      if (data.vault && data.vault.credentials) {
+        const state: ServerVaultState = {
+          initialized: true,
+          resigned: false,
+          vault: data.vault
+        };
+        saveLocalCachedState(state);
+        return state;
+      }
     }
-  } catch (err) {
-    // Fall back to local cache if Render is temporarily unreachable
-  }
+  } catch (_) {}
   return null;
 }
 
-async function pushRemoteBackendVault(payload: any): Promise<void> {
+/**
+ * Persist vault state to permanent cloud storage
+ */
+async function saveCloudVault(state: ServerVaultState): Promise<void> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
+    await fetch(CLOUD_VAULT_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'aegis_master_vault',
+        data: {
+          initialized: state.initialized,
+          resigned: state.resigned,
+          resignedAt: state.resignedAt,
+          vault: state.vault,
+          updatedAt: new Date().toISOString()
+        }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } catch (err) {
+    console.warn('[Vault API] Cloud save error:', err);
+  }
+}
+
+async function forwardToRenderBackend(payload: any): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     await fetch(`${BACKEND_URL}/api/vault`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -190,19 +232,17 @@ async function pushRemoteBackendVault(payload: any): Promise<void> {
       signal: controller.signal
     });
     clearTimeout(timeout);
-  } catch (err) {
-    console.warn('[Vault API] Could not push to Render backend:', err);
-  }
+  } catch (_) {}
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
-  // Attempt sync with central Render backend
+  // Load state from permanent cloud storage, falling back to local cache
   let currentState = loadLocalCachedState();
-  const remoteState = await fetchRemoteBackendVault();
-  if (remoteState) {
-    currentState = remoteState;
+  const cloudState = await fetchCloudVault();
+  if (cloudState) {
+    currentState = cloudState;
   }
 
   if (req.method === 'GET') {
@@ -210,14 +250,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       initialized: currentState.initialized,
       resigned: currentState.resigned,
       resignedAt: currentState.resignedAt || null,
-      vault: currentState.vault
+      vault: currentState.vault || DEFAULT_PRESEEDED_VAULT
     });
   }
 
   if (req.method === 'POST') {
     const { action, role, password, vault } = req.body || {};
 
-    // 1. Direct Server-Side Password Verification for Any Device
+    // 1. Password verification for ANY device
     if (action === 'verify') {
       const activeVault = currentState.vault || DEFAULT_PRESEEDED_VAULT;
       const cred = activeVault?.credentials?.[role as UserRole];
@@ -232,18 +272,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const computedHash = nodeComputeHash(password || '', cred.salt);
       const isMatch = computedHash === cred.hash;
 
-      if (isMatch) {
-        return res.status(200).json({
-          valid: true,
-          role,
-          vault: activeVault
-        });
-      } else {
-        return res.status(200).json({
-          valid: false,
-          error: `ACCESS DENIED: Authentication credentials invalid for role.`
-        });
-      }
+      return res.status(200).json({
+        valid: isMatch,
+        role,
+        vault: activeVault,
+        error: isMatch ? undefined : 'ACCESS DENIED: Authentication credentials invalid for role.'
+      });
     }
 
     // 2. Resign Commander Workflow
@@ -256,8 +290,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       saveLocalCachedState(resignedState);
-      // Push resignation to Render backend in background
-      await pushRemoteBackendVault({ action: 'resign', timestamp: resignedState.resignedAt });
+      await saveCloudVault(resignedState);
+      forwardToRenderBackend({ action: 'resign', timestamp: resignedState.resignedAt }).catch(() => {});
 
       return res.status(200).json({
         success: true,
@@ -268,12 +302,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 3. First-time setup or Password Updates
+    // 3. Save / Update Passwords
     if (action === 'initialize' || action === 'save' || vault) {
-      const updatedVault = vault || req.body;
+      const updatedVault: MasterCredentialVault = vault || req.body;
       if (!updatedVault || !updatedVault.credentials) {
         return res.status(400).json({ error: 'Invalid vault payload provided.' });
       }
+
+      // Mark as explicitly customized by the user
+      updatedVault.customized = true;
+      updatedVault.isDefaultFallback = false;
 
       const newState: ServerVaultState = {
         initialized: true,
@@ -282,8 +320,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       saveLocalCachedState(newState);
-      // Push updated vault to Render backend
-      await pushRemoteBackendVault({ action: 'save', vault: updatedVault });
+      await saveCloudVault(newState);
+      forwardToRenderBackend({ action: 'save', vault: updatedVault }).catch(() => {});
 
       return res.status(200).json({
         success: true,
