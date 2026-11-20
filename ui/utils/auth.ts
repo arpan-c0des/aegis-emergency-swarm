@@ -154,64 +154,64 @@ const VAULT_STORAGE_KEY = 'aegis_master_security_vault_v1';
 const SESSION_STORAGE_KEY = 'aegis_auth_session_v1';
 const RESIGNED_STORAGE_KEY = 'aegis_commander_resigned_v1';
 
-// Default pre-seeded vault matching standard setup
+// Active customized credentials set by Commander
 export const DEFAULT_PRESEEDED_VAULT: MasterCredentialVault = {
   initialized: true,
   version: '1.0.0-AEGIS-SECURE',
-  activatedAt: '2026-11-17T00:00:00.000Z',
-  activatedBy: 'Incident Commander (EOC Gold Command)',
-  customized: false,
-  isDefaultFallback: true,
+  activatedAt: '2026-11-20T14:15:07.869Z',
+  activatedBy: 'Incident Commander',
+  customized: true,
+  isDefaultFallback: false,
   credentials: {
     incident_commander: {
       roleId: 'incident_commander',
-      salt: 'c0mm4nd3r_s4lt_k0lk4t4_2026_aegis',
-      hash: '6a9540cddf003c5e8b83411b051764566c7caba4729b05cfe798338d33a4e32e',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: 'ad4a810cf0045d9de13a9c295b84b4c4',
+      hash: '9d5480582969d67750af979067ccc071a3af1375cf95591ae59e0440a4f94c88',
+      updatedAt: '2026-11-19T17:11:49.436Z',
       updatedBy: 'Incident Commander'
     },
     fleet_operator: {
       roleId: 'fleet_operator',
-      salt: 'fl33t_0p3r4t0r_s4lt_2026_aegis_sec',
-      hash: '3ebe285e91ebfb04487447d7baf45df5fd5b93d965bb1154c124caa548a19e58',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: '3c3a2cc39cee1ebc31548996b3e5745f',
+      hash: '95c9e1db6671646c01be0a702e754e14d291933bce9f6e8280cbbbb581693671',
+      updatedAt: '2026-11-20T14:15:07.869Z',
       updatedBy: 'Incident Commander'
     },
     hospital_staff: {
       roleId: 'hospital_staff',
-      salt: 'h0sp1t4l_b3d_s4lt_2026_aegis_intake',
-      hash: '76b160e0dba2794ac012f7b1b5f39b21b24e4c46e384bcffe341e4824fdf1507',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: 'a0644b4a928fe23f7ea1a4c374623cd1',
+      hash: 'e2a4f661c7c5dfcee2ff5b1ef883f1045be8aff5625088db6c4c9f77f695d0f5',
+      updatedAt: '2026-11-19T17:11:49.436Z',
       updatedBy: 'Incident Commander'
     },
     driver_police: {
       roleId: 'driver_police',
-      salt: 'p0l1c3_dr1v3r_s4lt_2026_aegis_pol02',
-      hash: '9771ab567afe6ae73bf594a282201ba22ee7e3512cf7adb556cfc1ab0493b990',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: 'e69cda44102c6e406db026b7e4355f38',
+      hash: 'cda01376b5820c5424371cdf47c8eddc701517522c651615a0de5f1a542e9940',
+      updatedAt: '2026-11-19T17:11:49.436Z',
       updatedBy: 'Incident Commander'
     },
     driver_fire: {
       roleId: 'driver_fire',
-      salt: 'f1r3_dr1v3r_s4lt_2026_aegis_fire03',
-      hash: '620c0d52018045ecb99a4f72399a177969d2640d7795e2a3e0c962502fb9f567',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: 'd77064bba6332d3daa48a17ef0a51ed8',
+      hash: '7c78ba963c38ed61105dd50484e60747ee9c8aedb4ae5bb69b5d10c0cb9d8452',
+      updatedAt: '2026-11-19T17:11:49.436Z',
       updatedBy: 'Incident Commander'
     },
     driver_ambulance: {
       roleId: 'driver_ambulance',
-      salt: '4mb_dr1v3r_s4lt_2026_aegis_amb07',
-      hash: '0f8fd069ffff4c067704f488c118777372f65420c2747bca657c00dbd24e80c2',
-      updatedAt: '2026-11-17T00:00:00.000Z',
+      salt: '5e0274d4030f5b0523866ac971f11ab1',
+      hash: '7a97902c1e8e75387aefeadc1d44e3e75e70cdb4d936a04e19e94d755dea619f',
+      updatedAt: '2026-11-19T17:11:49.436Z',
       updatedBy: 'Incident Commander'
     }
   },
   auditLog: [
     {
-      timestamp: '2026-11-17T00:00:00.000Z',
-      event: 'SYSTEM_CENTRAL_VAULT_PROVISIONED',
+      timestamp: '2026-11-20T14:15:07.869Z',
+      event: 'SYSTEM_CENTRAL_VAULT_ACTIVE',
       role: 'incident_commander',
-      actor: 'Incident Commander (EOC Gold Command)'
+      actor: 'Incident Commander'
     }
   ]
 };

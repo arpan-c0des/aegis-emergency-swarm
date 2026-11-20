@@ -26,6 +26,7 @@ const DEFAULT_EVACUATION: EvacuationTally = {
 const CLOUD_EVAC_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a1f7de1c6b001f';
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
 const CACHE_FILE = path.join(os.tmpdir(), 'aegis_evacuation_state.json');
+const CONFIG_EVAC_PATH = path.join(process.cwd(), 'config', 'central_evacuation.json');
 
 declare global {
   var __AEGIS_EVACUATION_STATE__: EvacuationTally | undefined;
@@ -35,6 +36,7 @@ function loadLocalCache(): EvacuationTally {
   if (global.__AEGIS_EVACUATION_STATE__) {
     return global.__AEGIS_EVACUATION_STATE__;
   }
+  // 1. Check temporary runtime cache
   try {
     if (fs.existsSync(CACHE_FILE)) {
       const data = fs.readFileSync(CACHE_FILE, 'utf-8');
@@ -45,6 +47,19 @@ function loadLocalCache(): EvacuationTally {
       }
     }
   } catch (_) {}
+
+  // 2. Check bundled configuration file from deployment
+  try {
+    if (fs.existsSync(CONFIG_EVAC_PATH)) {
+      const data = fs.readFileSync(CONFIG_EVAC_PATH, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (parsed && typeof parsed.total === 'number') {
+        global.__AEGIS_EVACUATION_STATE__ = parsed;
+        return parsed;
+      }
+    }
+  } catch (_) {}
+
   global.__AEGIS_EVACUATION_STATE__ = DEFAULT_EVACUATION;
   return DEFAULT_EVACUATION;
 }
@@ -56,13 +71,38 @@ function saveLocalCache(state: EvacuationTally) {
   } catch (_) {}
 }
 
+async function fetchRemoteBackendEvacuation(): Promise<EvacuationTally | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(`${BACKEND_URL}/api/evacuation`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && typeof data.total === 'number') {
+      const local = loadLocalCache();
+      const localTime = new Date(local.updatedAt).getTime() || 0;
+      const remoteTime = new Date(data.updatedAt).getTime() || 0;
+      if (remoteTime >= localTime) {
+        saveLocalCache(data);
+        return data;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 async function fetchCloudEvacuation(): Promise<EvacuationTally | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(CLOUD_EVAC_URL, {
       method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Mozilla/5.0' },
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -83,7 +123,7 @@ async function saveCloudEvacuation(state: EvacuationTally): Promise<void> {
     const timeout = setTimeout(() => controller.abort(), 3500);
     await fetch(CLOUD_EVAC_URL, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' },
       body: JSON.stringify({
         name: 'aegis_central_evacuation',
         data: state
@@ -112,8 +152,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   let currentState = loadLocalCache();
-  const cloud = await fetchCloudEvacuation();
-  if (cloud) currentState = cloud;
+
+  // Prefer remote Render backend as authoritative multi-device master
+  const remote = await fetchRemoteBackendEvacuation();
+  if (remote) {
+    currentState = remote;
+  } else {
+    const cloud = await fetchCloudEvacuation();
+    if (cloud) currentState = cloud;
+  }
 
   if (req.method === 'GET') {
     return res.status(200).json(currentState);

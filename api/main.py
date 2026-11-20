@@ -516,4 +516,48 @@ async def update_evacuation_state(payload: dict):
 
     return {"status": "success", "data": global_evacuation_state}
 
+# =========================================================================
+# 7. REAL-TIME MULTI-DEVICE TACTICAL AUDIO BROADCAST ENGINE
+# =========================================================================
+latest_tactical_broadcast = {
+    "id": "genesis",
+    "full": "All units standing by. EOC Gold Command monitoring city sector corridors.",
+    "police": "Police unit POL-02: Standing by on patrol.",
+    "fire": "Fire Engine FIRE-03: Standing by at Shyambazar depot.",
+    "ambulance": "Ambulance AMB-07: Standing by for trauma triage calls.",
+    "timestamp": "2026-11-20T14:40:00Z"
+}
+
+@app.get("/api/broadcast/latest")
+def get_latest_broadcast():
+    return latest_tactical_broadcast
+
+@app.post("/api/broadcast")
+async def publish_tactical_broadcast(payload: dict):
+    global latest_tactical_broadcast
+    import datetime
+    b_id = payload.get("id") or f"bc_{int(datetime.datetime.utcnow().timestamp() * 1000)}"
+    full_text = payload.get("full") or payload.get("broadcast_summary") or "Attention all units: Incident Commander broadcast."
+    police_text = payload.get("police") or "Attention Police Interceptor POL-02: Maintain traffic cordon and secure incident perimeter."
+    fire_text = payload.get("fire") or "Attention Fire Engine FIRE-03: Proceed for structural suppression and hazard containment."
+    ambulance_text = payload.get("ambulance") or "Attention Ambulance AMB-07: Proceed for casualty triage and transport."
+
+    latest_tactical_broadcast = {
+        "id": b_id,
+        "full": full_text,
+        "police": police_text,
+        "fire": fire_text,
+        "ambulance": ambulance_text,
+        "timestamp": payload.get("timestamp") or (datetime.datetime.utcnow().isoformat() + "Z")
+    }
+
+    # Broadcast to all connected WebSockets immediately
+    await broadcast_message({
+        "type": "TACTICAL_AUDIO_BROADCAST",
+        "data": latest_tactical_broadcast
+    })
+
+    return {"status": "broadcast_published", "data": latest_tactical_broadcast}
+
+
 

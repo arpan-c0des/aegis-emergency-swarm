@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { TacticalAuthBadge } from '../components/TacticalAuthBadge';
 import { ROLE_CONFIGS, UserRole } from '../utils/auth';
 import { useEvacuationSync, EvacuationServiceType } from '../utils/evacuationSync';
+import { useTacticalBroadcast } from '../utils/broadcastSync';
 
 // Dynamically import Kolkata Leaflet Fleet Map to prevent SSR window issues
 const KolkataFleetMap = dynamic(() => import('../components/KolkataFleetMap'), {
@@ -91,6 +92,48 @@ export default function FleetPage() {
   const [clock, setClock] = useState('');
   const [backendOnline, setBackendOnline] = useState(true);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [activeBroadcastOrder, setActiveBroadcastOrder] = useState<string | null>(null);
+  const [broadcastAlertActive, setBroadcastAlertActive] = useState<boolean>(false);
+
+  // Real-time Tactical Audio Broadcast Receiver
+  // Automatically speaks when Commander broadcasts from C2 tactical window
+  useTacticalBroadcast((broadcast) => {
+    let tailoredOrder = '';
+    if (activeDriverRole === 'driver_police') {
+      tailoredOrder = broadcast.police || broadcast.full;
+    } else if (activeDriverRole === 'driver_fire') {
+      tailoredOrder = broadcast.fire || broadcast.full;
+    } else if (activeDriverRole === 'driver_ambulance') {
+      tailoredOrder = broadcast.ambulance || broadcast.full;
+    } else if (isOperator) {
+      tailoredOrder = broadcast.full;
+    }
+
+    if (!tailoredOrder) return;
+
+    setActiveBroadcastOrder(tailoredOrder);
+    setBroadcastAlertActive(true);
+    setTimeout(() => setBroadcastAlertActive(false), 9000);
+
+    // Automatically speak aloud on this driver's device
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(tailoredOrder);
+      utterance.rate = 1.04;
+      utterance.pitch = 0.96;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => 
+        v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('David') || v.name.includes('Guy'))
+      ) || voices.find(v => v.lang.startsWith('en'));
+      if (preferred) utterance.voice = preferred;
+
+      utterance.onstart = () => setIsPlayingAudio(true);
+      utterance.onend = () => setIsPlayingAudio(false);
+      utterance.onerror = () => setIsPlayingAudio(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  });
 
   // Real-time Dynamic Civilian Evacuation Intake System
   const { 
@@ -285,13 +328,15 @@ export default function FleetPage() {
     const destNode = KOLKATA_FLEET_NODES[destination];
     const destName = destNode ? destNode.name.split('(')[0].trim() : destination;
     
-    let speechText = '';
-    if (activeDriverRole === 'driver_police') {
-      speechText = `Attention Police Interceptor 0 2. Dispatch directive: Clear priority arterial corridor to ${destName}. Distance ${routeResult?.distanceKm || '9'} kilometers. Maintain high visibility siren escort.`;
-    } else if (activeDriverRole === 'driver_fire') {
-      speechText = `Attention Fire Engine 0 3. Dispatch directive: Proceed immediately to ${destName}. Distance ${routeResult?.distanceKm || '11'} kilometers. Establish water supply and cooling perimeter on arrival.`;
-    } else {
-      speechText = `Attention Paramedic Ambulance 0 7. Dispatch directive: Expedite trauma transport to ${destName}. Distance ${routeResult?.distanceKm || '8'} kilometers. SSKM and Apollo trauma bays alerted.`;
+    let speechText = activeBroadcastOrder || '';
+    if (!speechText) {
+      if (activeDriverRole === 'driver_police') {
+        speechText = `Attention Police Interceptor 0 2. Dispatch directive: Clear priority arterial corridor to ${destName}. Distance ${routeResult?.distanceKm || '9'} kilometers. Maintain high visibility siren escort.`;
+      } else if (activeDriverRole === 'driver_fire') {
+        speechText = `Attention Fire Engine 0 3. Dispatch directive: Proceed immediately to ${destName}. Distance ${routeResult?.distanceKm || '11'} kilometers. Establish water supply and cooling perimeter on arrival.`;
+      } else {
+        speechText = `Attention Paramedic Ambulance 0 7. Dispatch directive: Expedite trauma transport to ${destName}. Distance ${routeResult?.distanceKm || '8'} kilometers. SSKM and Apollo trauma bays alerted.`;
+      }
     }
 
     if ('speechSynthesis' in window) {
@@ -461,6 +506,42 @@ export default function FleetPage() {
 
       {/* Main Content Workspace */}
       <main className="flex-1 p-3 sm:p-5 max-w-[1560px] mx-auto w-full">
+        {/* Real-time Commander C2 Priority Broadcast Alert */}
+        {broadcastAlertActive && activeBroadcastOrder && (
+          <div className="mb-4 rounded-xl border border-red-500/60 bg-red-950/60 p-3.5 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse shadow-[0_0_25px_rgba(239,68,68,0.35)]">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-red-600/30 border border-red-500/50 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                <Radio className="text-red-400 animate-spin" size={20} />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded bg-red-500/30 text-red-200 border border-red-400/40">
+                    PRIORITY 1 AUDIO BROADCAST
+                  </span>
+                  <span className="text-[10px] font-mono text-red-300">COMMANDER C2 TACTICAL FREQUENCY</span>
+                </div>
+                <p className="text-xs sm:text-sm font-semibold text-white mt-1">
+                  "{activeBroadcastOrder}"
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                  window.speechSynthesis.cancel();
+                  const utterance = new SpeechSynthesisUtterance(activeBroadcastOrder);
+                  utterance.rate = 1.04;
+                  window.speechSynthesis.speak(utterance);
+                }
+              }}
+              className="shrink-0 self-end sm:self-auto px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold font-mono transition flex items-center gap-1.5 shadow"
+            >
+              <Volume2 size={14} />
+              <span>REPLAY AUDIO</span>
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           
           {/* =================================================================== */}
@@ -600,6 +681,24 @@ export default function FleetPage() {
                     <span>{isPlayingAudio ? 'BROADCASTING…' : 'VOICE ORDER'}</span>
                   </button>
                 </div>
+
+                {/* Priority Commander Broadcast Directive if received */}
+                {activeBroadcastOrder && (
+                  <div className="p-2.5 rounded-xl border border-red-500/50 bg-red-950/40 text-white space-y-1 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-red-400">
+                      <span className="flex items-center gap-1.5 font-mono">
+                        <Radio size={12} className="animate-pulse text-red-400" />
+                        COMMANDER C2 DIRECTIVE
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-[9px] font-mono text-red-300 border border-red-500/30">
+                        {isPlayingAudio ? 'TRANSMITTING' : 'RECEIVED'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed font-medium text-red-100">
+                      {activeBroadcastOrder}
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   {driverInstructions.orders.map((order, i) => (

@@ -25,6 +25,7 @@ export const DEFAULT_EVACUATION_STATE: EvacuationTallyState = {
 
 const STORAGE_KEY = 'aegis_civilians_evacuated_tally_v1';
 const UPDATE_EVENT = 'aegis_evacuation_tally_updated';
+const EVAC_BROADCAST_CHANNEL = 'aegis_evacuation_broadcast_channel';
 
 export function getStoredEvacuationState(): EvacuationTallyState {
   if (typeof window === 'undefined') {
@@ -135,6 +136,15 @@ export function saveEvacuationState(
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
     window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail: newState }));
 
+    // Instant cross-tab broadcast
+    if ('BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel(EVAC_BROADCAST_CHANNEL);
+        bc.postMessage(newState);
+        bc.close();
+      } catch (_) {}
+    }
+
     // Real-time server push for multi-device sync
     pushEvacuationToServer({
       police,
@@ -235,8 +245,52 @@ export function useEvacuationSync(pollIntervalMs: number = 2500) {
     window.addEventListener(UPDATE_EVENT, handleCustomUpdate);
     window.addEventListener('storage', handleStorageUpdate);
 
+    // 5. Cross-tab BroadcastChannel listener
+    let bc: BroadcastChannel | null = null;
+    if ('BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel(EVAC_BROADCAST_CHANNEL);
+        bc.onmessage = (event) => {
+          if (event.data && typeof event.data.total === 'number') {
+            setEvacuationState(event.data);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(event.data));
+            } catch (_) {}
+          }
+        };
+      } catch (_) {}
+    }
+
+    // 6. Real-time Render WebSocket listener for instant multi-device updates
+    const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://aegis-backend-5fx3.onrender.com').replace(/\/$/, '');
+    const wsProto = BACKEND_URL.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = BACKEND_URL.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProto}//${wsHost}/ws`;
+
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'EVACUATION_UPDATE' && msg.data) {
+            setEvacuationState(msg.data);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(msg.data));
+            } catch (_) {}
+          }
+        } catch (_) {}
+      };
+    } catch (_) {}
+
     return () => {
       clearInterval(interval);
+      if (bc) {
+        try { bc.close(); } catch (_) {}
+      }
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+      }
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       window.removeEventListener(UPDATE_EVENT, handleCustomUpdate);

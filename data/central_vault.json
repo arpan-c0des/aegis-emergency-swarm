@@ -1,0 +1,106 @@
+{
+  "initialized": true,
+  "resigned": false,
+  "vault": {
+    "initialized": true,
+    "version": "1.0.0-AEGIS-SECURE",
+    "activatedAt": "2026-11-20T14:15:07.869Z",
+    "activatedBy": "Incident Commander",
+    "credentials": {
+      "incident_commander": {
+        "roleId": "incident_commander",
+        "salt": "ad4a810cf0045d9de13a9c295b84b4c4",
+        "hash": "9d5480582969d67750af979067ccc071a3af1375cf95591ae59e0440a4f94c88",
+        "updatedAt": "2026-11-19T17:11:49.436Z",
+        "updatedBy": "Incident Commander (First-Time Activation)"
+      },
+      "fleet_operator": {
+        "roleId": "fleet_operator",
+        "salt": "3c3a2cc39cee1ebc31548996b3e5745f",
+        "hash": "95c9e1db6671646c01be0a702e754e14d291933bce9f6e8280cbbbb581693671",
+        "updatedAt": "2026-11-20T14:15:07.869Z",
+        "updatedBy": "Incident Commander"
+      },
+      "hospital_staff": {
+        "roleId": "hospital_staff",
+        "salt": "a0644b4a928fe23f7ea1a4c374623cd1",
+        "hash": "e2a4f661c7c5dfcee2ff5b1ef883f1045be8aff5625088db6c4c9f77f695d0f5",
+        "updatedAt": "2026-11-19T17:11:49.436Z",
+        "updatedBy": "Incident Commander (First-Time Activation)"
+      },
+      "driver_police": {
+        "roleId": "driver_police",
+        "salt": "e69cda44102c6e406db026b7e4355f38",
+        "hash": "cda01376b5820c5424371cdf47c8eddc701517522c651615a0de5f1a542e9940",
+        "updatedAt": "2026-11-19T17:11:49.436Z",
+        "updatedBy": "Incident Commander (First-Time Activation)"
+      },
+      "driver_fire": {
+        "roleId": "driver_fire",
+        "salt": "d77064bba6332d3daa48a17ef0a51ed8",
+        "hash": "7c78ba963c38ed61105dd50484e60747ee9c8aedb4ae5bb69b5d10c0cb9d8452",
+        "updatedAt": "2026-11-19T17:11:49.436Z",
+        "updatedBy": "Incident Commander (First-Time Activation)"
+      },
+      "driver_ambulance": {
+        "roleId": "driver_ambulance",
+        "salt": "5e0274d4030f5b0523866ac971f11ab1",
+        "hash": "7a97902c1e8e75387aefeadc1d44e3e75e70cdb4d936a04e19e94d755dea619f",
+        "updatedAt": "2026-11-19T17:11:49.436Z",
+        "updatedBy": "Incident Commander (First-Time Activation)"
+      }
+    },
+    "auditLog": [
+      {
+        "timestamp": "2026-11-20T14:15:07.869Z",
+        "event": "CREDENTIAL_UPDATED",
+        "role": "fleet_operator",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "MASTER_VAULT_INITIALIZED",
+        "role": "incident_commander",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "incident_commander",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "fleet_operator",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "hospital_staff",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "driver_police",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "driver_fire",
+        "actor": "Incident Commander"
+      },
+      {
+        "timestamp": "2026-11-19T17:11:49.436Z",
+        "event": "ROLE_CREDENTIAL_PROVISIONED",
+        "role": "driver_ambulance",
+        "actor": "Incident Commander"
+      }
+    ],
+    "customized": true,
+    "isDefaultFallback": false
+  }
+}

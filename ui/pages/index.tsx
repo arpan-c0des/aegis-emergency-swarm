@@ -16,6 +16,7 @@ import { useHospitalBeds } from '../utils/hospitalSync';
 import { useLiveResponseTime } from '../utils/liveResponseTime';
 import { useEvacuationSync } from '../utils/evacuationSync';
 import { RadioFrequencyVisualizer } from '../components/RadioFrequencyVisualizer';
+import { buildTacticalBroadcast, pushTacticalBroadcast } from '../utils/broadcastSync';
 
 // Dynamically import Kolkata Leaflet Tactical Map (SSR false for Next.js)
 const KolkataLeafletMap = dynamic(
@@ -470,6 +471,19 @@ export default function AegisTacticalCommandConsole() {
 
     // Update broadcast summary state so HUD radio banner reflects the spoken words
     setBroadcastSummary(textToSpeak);
+
+    // Cross-device broadcast distribution: all active driver cockpits receive their tailored guidance
+    try {
+      const broadcastPayload = buildTacticalBroadcast(
+        textToSpeak,
+        targetSector || "Sector_6B",
+        hazardType || "Collision",
+        severity || "Critical",
+        casualtiesCount !== undefined ? casualtiesCount : 6,
+        blockCorridors || false
+      );
+      pushTacticalBroadcast(broadcastPayload).catch(() => {});
+    } catch (_) {}
 
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
